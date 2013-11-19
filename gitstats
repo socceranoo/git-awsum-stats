@@ -730,16 +730,18 @@ class HTMLReportCreator(ReportCreator):
 		# copy static files. Looks in the binary directory, ../share/gitstats and /usr/share/gitstats
 		binarypath = os.path.dirname(os.path.abspath(__file__))
 		secondarypath = os.path.join(binarypath, '..', 'share', 'gitstats')
-		basedirs = [binarypath, secondarypath, '/usr/share/gitstats']
-		for file in ('gitstats.css', 'sortable.js', 'arrow-up.gif', 'arrow-down.gif', 'arrow-none.gif'):
-			for base in basedirs:
-				src = base + '/' + file
-				if os.path.exists(src):
-					shutil.copyfile(src, path + '/' + file)
-					break
+		#basedirs = [binarypath, secondarypath, '/usr/share/gitstats']
+		basedir = 'assets/css'
+		#for file in ('gitstats.css', 'sortable.js', 'arrow-up.gif', 'arrow-down.gif', 'arrow-none.gif'):
+		for file in ('bootstrap.css', 'bootstrap-responsive.css', 'demo_page.css', 'demo_table.css', 'gitstats.css', 'jquery.jqplot.min.css'):
+			src = basedir + '/' + file
+			if os.path.exists(src):
+				shutil.copyfile(src, path + '/assets/css/' + file)
 			else:
-				print 'Warning: "%s" not found, so not copied (searched: %s)' % (file, basedirs)
+				print 'Warning: "%s" not found, so not copied (searched: %s)' % (file, basedir)
 
+		shutil.copyfile("assets/js/sortable.js", path + '/assets/js/sortable.js')
+		#shutil.copyfile("assets/css/gitstats.css", path + '/assets/css/gitstats.css')
 		f = open(path + "/index.html", 'w')
 		format = '%Y-%m-%d %H:%M:%S'
 		self.printHeader(f)
@@ -760,7 +762,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('<dt>Authors</dt><dd>%s (average %.1f commits per author)</dd>' % (data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors()))
 		f.write('</dl>')
 
-		f.write('</body>\n</html>')
+		self.printFooter(f)
 		f.close()
 
 		###
@@ -789,7 +791,7 @@ class HTMLReportCreator(ReportCreator):
 			stampcur -= deltaweek
 
 		# top row: commits & bar
-		f.write('<table class="noborders"><tr>')
+		f.write('<table class="table table-striped"><tr>')
 		for i in range(0, WEEKS):
 			commits = 0
 			if weeks[i] in data.activity_by_year_week:
@@ -941,7 +943,7 @@ class HTMLReportCreator(ReportCreator):
 			f.write('<tr><th>%s</th><td style="background-color: rgb(%d, 0, 0)">%d</td></tr>' % (i, r, commits))
 		f.write('</tr></table>')
 
-		f.write('</body></html>')
+		self.printFooter(f)
 		f.close()
 
 		###
@@ -1054,7 +1056,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('<img src="domains.png" alt="Commits by Domains" />')
 		fp.close()
 
-		f.write('</body></html>')
+		self.printFooter(f)
 		f.close()
 
 		###
@@ -1104,8 +1106,7 @@ class HTMLReportCreator(ReportCreator):
 				loc_percentage = 0
 			f.write('<tr><td>%s</td><td>%d (%.2f%%)</td><td>%d (%.2f%%)</td><td>%d</td></tr>' % (ext, files, (100.0 * files) / data.getTotalFiles(), lines, loc_percentage, lines / files))
 		f.write('</table>')
-
-		f.write('</body></html>')
+		self.printFooter(f)
 		f.close()
 
 		###
@@ -1127,7 +1128,7 @@ class HTMLReportCreator(ReportCreator):
 			fg.write('%d %d\n' % (stamp, data.changes_by_date[stamp]['lines']))
 		fg.close()
 
-		f.write('</body></html>')
+		self.printFooter(f)
 		f.close()
 
 		###
@@ -1155,7 +1156,7 @@ class HTMLReportCreator(ReportCreator):
 			f.write('<tr><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>' % (tag, data.tags[tag]['date'], data.tags[tag]['commits'], ', '.join(authorinfo)))
 		f.write('</table>')
 
-		f.write('</body></html>')
+		self.printFooter(f)
 		f.close()
 
 		self.createGraphs(path)
@@ -1361,12 +1362,22 @@ plot """
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 	<title>GitStats - %s</title>
-	<link rel="stylesheet" href="%s" type="text/css" />
+	<link rel="stylesheet" href="assets/css/%s" type="text/css" />
+	<link rel="stylesheet" href="assets/css/bootstrap.css" type="text/css" />
+	<link rel="stylesheet" href="assets/css/bootstrap-responsive.css" type="text/css" />
 	<meta name="generator" content="GitStats %s" />
-	<script type="text/javascript" src="sortable.js"></script>
 </head>
 <body>
+<div class='container'>
 """ % (self.title, conf['style'], getversion()))
+
+	def printFooter(self, f, title = ''):
+		f.write("""
+<script type="text/javascript" src="assets/js/sortable.js"></script>
+</div>
+</body>
+</html>
+""")
 
 	def printNav(self, f):
 		f.write("""
@@ -1424,6 +1435,9 @@ class GitStats:
 
 		try:
 			os.makedirs(outputpath)
+			os.makedirs(outputpath + '/assets');
+			os.makedirs(outputpath + '/assets/js');
+			os.makedirs(outputpath + '/assets/css');
 		except OSError:
 			pass
 		if not os.path.isdir(outputpath):
