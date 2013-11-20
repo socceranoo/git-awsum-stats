@@ -19,7 +19,7 @@ import json
 activities_array = {}
 files_array = {}
 lines_array = {}
-authors_array = {}
+author_array = {}
 general_array = {}
 if sys.version_info < (2, 6):
        print >> sys.stderr, "Python 2.6 or higher is required for gitstats"
@@ -942,6 +942,29 @@ class HTMLReportCreator(ReportCreator):
 			#f.write('<tr><th>%s</th><td style="background-color: rgb(%d, 0, 0)">%d</td></tr>' % (i, r, commits))
 		activities_array['timezone'] = timezone_obj;
 
+		# Domains
+		domain_obj = {'title':'Commits by Domain', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'domain', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}}
+		f.write(html_header(2, 'Commits by Domains'))
+		domains_by_commits = getkeyssortedbyvaluekey(data.domains, 'commits')
+		domains_by_commits.reverse() # most first
+		#f.write('<div class="vtable"><table>')
+		#f.write('<tr><th>Domains</th><th>Total (%)</th></tr>')
+		fp = open(path + '/domains.dat', 'w')
+		n = 0
+		for domain in domains_by_commits:
+			#if n == conf['max_domains']:
+			#	break
+			commits = 0
+			n += 1
+			info = data.getDomainInfo(domain)
+			commits = info['commits']
+			domain_obj['xaxis']['value'].append(domain)
+			domain_obj['yaxis']['value'].append(commits)
+			domain_obj['y2axis']['value'].append((100.0 * commits / data.getTotalCommits()))
+			fp.write('%s %d %d\n' % (domain, n , info['commits']))
+			#f.write('<tr><th>%s</th><td>%d (%.2f%%)</td></tr>' % (domain, info['commits'], (100.0 * info['commits'] / data.getTotalCommits())))
+		fp.close()
+		activities_array['domain'] = domain_obj;
 		f.write("<div class='hor-chart display-none' style='display:none' id=activity data-json='"+json.dumps(activities_array)+"'></div>")
 		self.printFooter(f)
 		f.close()
@@ -954,28 +977,34 @@ class HTMLReportCreator(ReportCreator):
 
 		# Authors :: List of authors
 		f.write(html_header(2, 'List of Authors'))
+		author_list_obj = {'title':'List of authors', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":25}
 
-		f.write('<table class="authors sortable" id="authors">')
-		f.write('<tr><th>Author</th><th>Commits (%)</th><th>+ lines</th><th>- lines</th><th>First commit</th><th>Last commit</th><th class="unsortable">Age</th><th>Active days</th><th># by commits</th></tr>')
-		for author in data.getAuthors(conf['max_authors']):
+		for column in ("Author", "Commits", "%", "lines-added", "lines-removed", "First commit", "Last commit", "Age", "Active days", "Rank") :
+			author_list_obj['column_headers'].append({'sTitle':column, 'sclass':'center'})
+
+		#f.write('<table class="authors sortable" id="authors">')
+		#f.write('<tr><th>Author</th><th>Commits (%)</th><th>+ lines</th><th>- lines</th><th>First commit</th><th>Last commit</th><th class="unsortable">Age</th><th>Active days</th><th># by commits</th></tr>')
+		for author in data.getAuthors():
 			info = data.getAuthorInfo(author)
-			f.write('<tr><td>%s</td><td>%d (%.2f%%)</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>' % (author, info['commits'], info['commits_frac'], info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], info['timedelta'], len(info['active_days']), info['place_by_commits']))
-		f.write('</table>')
+			author_list_obj['rows'].append([author, info['commits'], info['commits_frac'], info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], info['timedelta'], len(info['active_days']), info['place_by_commits']])
+			#f.write('<tr><td>%s</td><td>%d (%.2f%%)</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>' % (author, info['commits'], info['commits_frac'], info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], info['timedelta'], len(info['active_days']), info['place_by_commits']))
+		#f.write('</table>')
 
-		allauthors = data.getAuthors()
-		if len(allauthors) > conf['max_authors']:
-			rest = allauthors[conf['max_authors']:]
-			f.write('<p class="moreauthors">These didn\'t make it to the top: %s</p>' % ', '.join(rest))
+		#allauthors = data.getAuthors()
+		#if len(allauthors) > conf['max_authors']:
+		#	rest = allauthors[conf['max_authors']:]
+		#	f.write('<p class="moreauthors">These didn\'t make it to the top: %s</p>' % ', '.join(rest))
+		#author_array['author_list']=author_list_obj;
 
 		f.write(html_header(2, 'Cumulated Added Lines of Code per Author'))
-		f.write('<img src="lines_of_code_by_author.png" alt="Lines of code per Author" />')
-		if len(allauthors) > conf['max_authors']:
-			f.write('<p class="moreauthors">Only top %d authors shown</p>' % conf['max_authors'])
+		#f.write('<img src="lines_of_code_by_author.png" alt="Lines of code per Author" />')
+		#if len(allauthors) > conf['max_authors']:
+			#f.write('<p class="moreauthors">Only top %d authors shown</p>' % conf['max_authors'])
 
 		f.write(html_header(2, 'Commits per Author'))
-		f.write('<img src="commits_by_author.png" alt="Commits per Author" />')
-		if len(allauthors) > conf['max_authors']:
-			f.write('<p class="moreauthors">Only top %d authors shown</p>' % conf['max_authors'])
+		#f.write('<img src="commits_by_author.png" alt="Commits per Author" />')
+		#if len(allauthors) > conf['max_authors']:
+			#f.write('<p class="moreauthors">Only top %d authors shown</p>' % conf['max_authors'])
 
 		fgl = open(path + '/lines_of_code_by_author.dat', 'w')
 		fgc = open(path + '/commits_by_author.dat', 'w')
@@ -1008,53 +1037,45 @@ class HTMLReportCreator(ReportCreator):
 			fgc.write('\n')
 		fgl.close()
 		fgc.close()
+		author_array['lines_by_authors']= lines_by_authors;
+		author_array['commits_by_authors']=commits_by_authors;
 
 		# Authors :: Author of Month
+		author_of_month_obj = {'title':'Author of Month', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":25}
 		f.write(html_header(2, 'Author of Month'))
-		f.write('<table class="sortable" id="aom">')
-		f.write('<tr><th>Month</th><th>Author</th><th>Commits (%%)</th><th class="unsortable">Next top %d</th><th>Number of authors</th></tr>' % conf['authors_top'])
+		#f.write('<table class="sortable" id="aom">')
+		#f.write('<tr><th>Month</th><th>Author</th><th>Commits (%%)</th><th class="unsortable">Next top %d</th><th>Number of authors</th></tr>' % conf['authors_top'])
+
+		for column in ("Month", "Author", "Commits", "%", "Next top 5", "Number of Authors") :
+			author_of_month_obj['column_headers'].append({'sTitle':column, 'sclass':'center'})
 		for yymm in reversed(sorted(data.author_of_month.keys())):
 			authordict = data.author_of_month[yymm]
 			authors = getkeyssortedbyvalues(authordict)
 			authors.reverse()
 			commits = data.author_of_month[yymm][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			f.write('<tr><td>%s</td><td>%s</td><td>%d (%.2f%% of %d)</td><td>%s</td><td>%d</td></tr>' % (yymm, authors[0], commits, (100.0 * commits) / data.commits_by_month[yymm], data.commits_by_month[yymm], next, len(authors)))
-
-		f.write('</table>')
+			author_of_month_obj['rows'].append([yymm, authors[0], commits, ((100.0 * commits) / data.commits_by_month[yymm]), data.commits_by_month[yymm], next, len(authors)])
+			#f.write('<tr><td>%s</td><td>%s</td><td>%d (%.2f%% of %d)</td><td>%s</td><td>%d</td></tr>' % (yymm, authors[0], commits, (100.0 * commits) / data.commits_by_month[yymm], data.commits_by_month[yymm], next, len(authors)))
+		#f.write('</table>')
+		author_array['author_of_month'] = author_of_month_obj
 
 		# Authors :: Author of Year
+		author_of_year_obj = {'title':'Author of Year', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":25}
 		f.write(html_header(2, 'Author of Year'))
-		f.write('<table class="sortable" id="aoy"><tr><th>Year</th><th>Author</th><th>Commits (%%)</th><th class="unsortable">Next top %d</th><th>Number of authors</th></tr>' % conf['authors_top'])
+		for column in ("Month", "Author", "Commits", "%", "Next top 5", "Number of Authors") :
+			author_of_year_obj['column_headers'].append({'sTitle':column, 'sclass':'center'})
+		#f.write('<table class="sortable" id="aoy"><tr><th>Year</th><th>Author</th><th>Commits (%%)</th><th class="unsortable">Next top %d</th><th>Number of authors</th></tr>' % conf['authors_top'])
 		for yy in reversed(sorted(data.author_of_year.keys())):
 			authordict = data.author_of_year[yy]
 			authors = getkeyssortedbyvalues(authordict)
 			authors.reverse()
 			commits = data.author_of_year[yy][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			f.write('<tr><td>%s</td><td>%s</td><td>%d (%.2f%% of %d)</td><td>%s</td><td>%d</td></tr>' % (yy, authors[0], commits, (100.0 * commits) / data.commits_by_year[yy], data.commits_by_year[yy], next, len(authors)))
-		f.write('</table>')
-
-		# Domains
-		f.write(html_header(2, 'Commits by Domains'))
-		domains_by_commits = getkeyssortedbyvaluekey(data.domains, 'commits')
-		domains_by_commits.reverse() # most first
-		f.write('<div class="vtable"><table>')
-		f.write('<tr><th>Domains</th><th>Total (%)</th></tr>')
-		fp = open(path + '/domains.dat', 'w')
-		n = 0
-		for domain in domains_by_commits:
-			if n == conf['max_domains']:
-				break
-			commits = 0
-			n += 1
-			info = data.getDomainInfo(domain)
-			fp.write('%s %d %d\n' % (domain, n , info['commits']))
-			f.write('<tr><th>%s</th><td>%d (%.2f%%)</td></tr>' % (domain, info['commits'], (100.0 * info['commits'] / data.getTotalCommits())))
-		f.write('</table></div>')
-		f.write('<img src="domains.png" alt="Commits by Domains" />')
-		fp.close()
-
+			author_of_year_obj['rows'].append([yy, authors[0], commits, ((100.0 * commits) / data.commits_by_year[yy]), data.commits_by_year[yy], next, len(authors)])
+			#f.write('<tr><td>%s</td><td>%s</td><td>%d (%.2f%% of %d)</td><td>%s</td><td>%d</td></tr>' % (yy, authors[0], commits, (100.0 * commits) / data.commits_by_year[yy], data.commits_by_year[yy], next, len(authors)))
+		#f.write('</table>')
+		author_array['author_of_year'] = author_of_year_obj
+		f.write("<div class='display-none' style='display:none' id=author data-json='"+json.dumps(author_array)+"'></div>")
 		self.printFooter(f)
 		f.close()
 
@@ -1069,7 +1090,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('</dl>\n')
 
 		f.write(html_header(2, 'Lines of Code'))
-		f.write('<img src="lines_of_code.png" />')
+		#f.write('<img src="lines_of_code.png" />')
 
 		fg = open(path + '/lines_of_code.dat', 'w')
 		for stamp in sorted(data.changes_by_date.keys()):
@@ -1136,13 +1157,13 @@ class HTMLReportCreator(ReportCreator):
 		#	fg.write('%s %d\n' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]))
 		fg.close()
 			
-		f.write('<img src="files_by_date.png" alt="Files by Date" />')
+		#f.write('<img src="files_by_date.png" alt="Files by Date" />')
 
 		#f.write('<h2>Average file size by date</h2>')
 
 		# Files :: Extensions
 		f.write(html_header(2, 'Extensions'))
-		f.write('<table class="sortable" id="ext"><tr><th>Extension</th><th>Files (%)</th><th>Lines (%)</th><th>Lines/file</th></tr>')
+		#f.write('<table class="sortable" id="ext"><tr><th>Extension</th><th>Files (%)</th><th>Lines (%)</th><th>Lines/file</th></tr>')
 		for ext in sorted(data.extensions.keys()):
 			files = data.extensions[ext]['files']
 			lines = data.extensions[ext]['lines']

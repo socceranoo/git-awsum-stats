@@ -7,18 +7,20 @@
  *
  * Designed and built with all the love in the world @twitter by @mdo and @fat.
  */
-@font-face {
-  font-family: proxima-nova-light;
-  src: url("fonts/proxima-nova-light.otf") format("opentype");
-}
-@font-face {
-  font-family: melbourne-regular;
-  src: url("fonts/melbourne-regular.otf") format("opentype");
-}
-@font-face {
-  font-family: rockwell;
-  src: url("fonts/rock.ttf");
-}
+/*
+ * @font-face {
+ *   font-family: proxima-nova-light;
+ *   src: url("fonts/proxima-nova-light.otf") format("opentype");
+ * }
+ * @font-face {
+ *   font-family: melbourne-regular;
+ *   src: url("fonts/melbourne-regular.otf") format("opentype");
+ * }
+ * @font-face {
+ *   font-family: rockwell;
+ *   src: url("fonts/rock.ttf");
+ * }
+ */
 .clearfix {
   *zoom: 1;
 }
