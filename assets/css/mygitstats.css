@@ -1,0 +1,66 @@
+/**
+ * GitStats - default style
+ */
+body {
+	color: black;
+	background-color: #fff;
+}
+
+dt {
+	font-weight: bold;
+	float: left;
+	margin-right: 1em;
+}
+
+dt:after {
+	content: ': ';
+}
+
+dd {
+	display: block;
+	clear: left;
+}
+
+table {
+	width:100%;
+	clear:both;
+}
+
+/* Navigation bar; tabbed style */
+.nav {
+	border-bottom: 1px solid black;
+	padding: 0.3em;
+}
+
+.nav ul {
+	list-style-type: none;
+	display: inline;
+	margin: 0;
+	padding: 0;
+}
+
+.nav li {
+	display: inline;
+}
+
+.nav li a {
+	padding: 0.3em;
+	text-decoration: none;
+	color: black;
+	border: 1px solid black;
+	margin: 0.5em;
+	background-color: #ddf;
+}
+
+.nav li a:hover {
+	background-color: #ddd;
+	border-bottom: 1px solid #ddf;
+}
+
+.moreauthors {
+	font-size: 80%;
+}
+h2 {
+	margin:60px 0px 20px 0px;
+	clear:both;
+}
