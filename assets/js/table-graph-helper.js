@@ -71,7 +71,7 @@ function init_bar_graph(div_object) {
 	var min_y = 0;
 	var step = max/numpoints;
 	var max_y = step * (numpoints + 1);
-	var color_arr = get_random_colors(master_color_array, limit);
+	var color_arr = get_random_colors(limit, 1);
 	var values = {divid:div_object.divid, horizontal:div_object.horizontal, xaxis_values:chart_values.xaxis, yaxis_values:chart_values.yaxis, graph_title:div_object.title, color_arr:color_arr, numberformat:div_object.numberformat, xlabel:div_object.xaxis.label, ylabel:div_object.yaxis.label, axis_min:min_y, axis_max:max_y};
 	//alert(JSON.stringify(values));
 	$("#"+values.divid).html("");
@@ -101,16 +101,24 @@ function init_bar_graph(div_object) {
 	general.drawChart();
 }
 
-function init_pie_chart(div_object) {
+function init_pie_donut_chart(div_object) {
 	$.jqplot.config.enablePlugins = true;
-	var limit = (div_object.data.value.length > div_object.upperlimit)?div_object.upperlimit:div_object.data.value.length;
 	var spie = [['C/C++', 30], ['PHP', 30], ['PYTHON', 10], ['PERL', 20], ['MYSQL', 5], ['SHELL', 5]];
-	var data = div_object.data.value.slice(0, limit);
-	var backEnd = new jqPlotChart(div_object.divid, $.jqplot.PieRenderer, [data]);
-	var legend = { show:true, rendererOptions: {location:'e'}};
+	//var limit = (div_object.data.value.length > div_object.upperlimit)?div_object.upperlimit:div_object.data.value.length;
+	//var data = div_object.data.value.slice(0, limit);
+	var limit = div_object.upperlimit;
+	var data = div_object.data.value;
+	var renderer = $.jqplot.PieRenderer;
+	var fill = false;
+	if (div_object.type == "donut") {
+		renderer = $.jqplot.DonutRenderer;
+		fill = true;
+	}
+	var backEnd = new jqPlotChart(div_object.divid, renderer, data);
+	var legend = { show:false, rendererOptions: {location:'e'}};
 	//var legend = { show:true, rendererOptions: { animate:{show:true}}, location:'e', marginTop: '7px' };
 	//var legend = { show:false};
-	var color_arr = get_random_colors(master_color_array, limit);
+	var color_arr = get_random_colors(limit, 0);
 	backEnd.setChartOptions("title", div_object.title);
 	backEnd.setChartOptions("legend", legend);
 	backEnd.setChartOptions("highlighter", { show: false });
@@ -118,6 +126,10 @@ function init_pie_chart(div_object) {
 	backEnd.setChartOptions("seriesColors", color_arr);
 	backEnd.setChartOptions("cursor", {show:false});
 	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "barMargin", 20);
+	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "fill", fill);
+	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "lineWidth", 6);
+	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "sliceMargin", 4);
+	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "dataLabels", 'label');
 	backEnd.setChartLevel2Options("grid", "borderWidth", 0);
 	backEnd.setChartLevel2Options("grid", "shadow", false);
 	backEnd.drawChart();
@@ -125,7 +137,7 @@ function init_pie_chart(div_object) {
 	//$("#"+div_object.divid).html($("#"+div_object.divid).html()+"<a id=change-colors class='btn btn-primary'>Change Colors</a>");
 
 	$("#change-colors").click(function () {
-		backEnd.setChartOptions("seriesColors", get_random_colors(master_color_array, limit));
+		backEnd.setChartOptions("seriesColors", get_random_colors(limit, 0));
 		backEnd.rePlot();
 	});
 }
@@ -204,7 +216,16 @@ function draw_timeline_graph (hits, hotspots, title) {
 
 }
 */
-
+function domdatatable(table_obj) {
+	/* Data set - can contain whatever information you want */
+	$('#'+table_obj.divid).dataTable(
+		{
+			"bPaginate": true, "bLengthChange": true, "bFilter": true, "bSort": true, "bInfo": true, "bAutoWidth": true,"aoColumns": table_obj.column_headers,
+			"iDisplayLength":table_obj.show_count, "aaSorting":[[table_obj.sort_index, table_obj.sort_order]]	
+		}
+	);	
+	//$('#'+table_obj.divid).css('width', '');
+}
 function newdatatable(table_obj) {
 	/* Data set - can contain whatever information you want */
 	var rows = [

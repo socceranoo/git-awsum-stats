@@ -39,11 +39,15 @@ function display(data) {
 	for (i = 0; i<keys.length; i++) {
 		if (data[keys[i]].type && data[keys[i]].type == 'table') {
 			newdatatable(data[keys[i]]);
+		} else if (data[keys[i]].type && data[keys[i]].type == 'table-dom') {
+			domdatatable(data[keys[i]]);
 		} else if (data[keys[i]].type && data[keys[i]].type == 'bar') {
 			//alert(keys[i]+" "+JSON.stringify(data[keys[i]]));
 			init_bar_graph(data[keys[i]]);
+		} else if (data[keys[i]].type && data[keys[i]].type == 'donut') {
+			init_pie_donut_chart(data[keys[i]]);
 		} else if (data[keys[i]].type && data[keys[i]].type == 'pie') {
-			init_pie_chart(data[keys[i]]);
+			init_pie_donut_chart(data[keys[i]]);
 		}
 	}
 }

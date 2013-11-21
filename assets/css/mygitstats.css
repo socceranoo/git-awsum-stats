@@ -56,10 +56,10 @@ h2 {
 }
 
 .heat-table tr {
-	height:12.5%;
+	height:auto;
 }
 .heat-table tr th, .heat-table tr td {
-	width:4%;
+	width:auto;
 	vertical-align:middle;
 	text-align:center;
 	border-right:1px solid #ddd;

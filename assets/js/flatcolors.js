@@ -80,7 +80,9 @@ var master_color_array = [
 	__asbestos,
 ];
 
-function get_random_colors(arr, size){
+var websafe_color_array =[];
+function get_random_colors(size, option){
+	var arr = (option === 0)?master_color_array:websafe_color_array;
 	var shuffled = arr.slice(0), i = arr.length, temp, index;
 	while (i--) {
 		index = Math.floor(i * Math.random());
@@ -90,3 +92,32 @@ function get_random_colors(arr, size){
 	}
 	return shuffled.slice(0, size);
 }
+
+(function websafe_colors() {
+	function componentToHex(c) {
+		var hex = c.toString(16);
+		return hex.length == 1 ? "0" + hex : hex;
+	}
+	function rgbToHex(r, g, b) {
+		return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+	}
+	var i, j, k, val_r, val_g, val_b, val;
+	var upper = 12;
+	var lower = 3;
+	var step = 3;
+	for(i = upper; i >= lower ; i-= step) {
+		//for($j = 0; $j <= upper ; $j+= step) {
+		for(j = upper; j >= lower ; j-= step) {
+			//for($k = 0; $k <= upper ; $k+= step) {
+			for(k = upper; k >= lower ; k-= step) {
+				val_r = i*16 + i;
+				val_g = j*16 + j;
+				val_b = k*16 + k;
+				val = rgbToHex(val_r, val_g, val_b);
+				websafe_color_array.push(val);
+				console.log(val);
+			}
+		}
+	}
+})();
+

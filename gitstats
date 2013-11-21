@@ -840,7 +840,7 @@ class HTMLReportCreator(ReportCreator):
 
 		# Day of Week
 		divid = 'day-of-week';
-		day_of_week_obj = {'divid':divid, 'title':'Day of Week', 'type':'pie', 'horizontal':0, 'data':{'label':'commits', 'value':[]}, 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':7, 'numberformat':'%d'}
+		day_of_week_obj = {'divid':divid, 'title':'Day of Week', 'type':'pie', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':7, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Day of Week'))
 		self.createDiv(f, divid, "div")
 		day_of_week = data.getActivityByDayOfWeek()
@@ -850,7 +850,7 @@ class HTMLReportCreator(ReportCreator):
 			if d in day_of_week:
 				commits = day_of_week[d]
 			fp.write('%d %s %d\n' % (d + 1, WEEKDAYS[d], commits))
-			day_of_week_obj['data']['value'].append([WEEKDAYS[d], commits])
+			day_of_week_obj['data']['value'][0].append([WEEKDAYS[d], commits])
 			day_of_week_obj['yaxis']['value'].append(commits)
 			day_of_week_obj['xaxis']['value'].append(WEEKDAYS[d])
 			if d in day_of_week:
@@ -862,8 +862,6 @@ class HTMLReportCreator(ReportCreator):
 		f.write("<a href='javascript:void(0);' class='btn btn-primary' id=change-colors>Change Colors</a>")
 
 		divid = 'hour-of-week';
-		hour_of_week_obj = {'title':'Hour of Week', 'type':'1bar', 'horizontal':0, 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[[], [], [], [], [], [], []]}, 'upperlimit':10, 'numberformat':'%d'}
-
 		# Hour of Week
 		f.write('\t\t<h2 class="text-center heat-table-heading">Hour of Week</h2>')
 		f.write('<table class="table plot heat-table">')
@@ -880,8 +878,8 @@ class HTMLReportCreator(ReportCreator):
 					commits = 0
 				if commits != 0:
 					f.write('<td class=data ')
-					r = 256 - int((float(commits) / data.activity_by_hour_of_week_busiest) * 128)
-					f.write(' style="background-color: rgb(%d, 0, 0)"' % r)
+					r = 192 - int((float(commits) / data.activity_by_hour_of_week_busiest) * 192)
+					f.write(' style="background-color: rgb(0, %d, 204)"' % r)
 					f.write('>%d</td>' % commits)
 				else:
 					f.write('<td style="background-color:#eee">-</td>')
@@ -890,7 +888,7 @@ class HTMLReportCreator(ReportCreator):
 
 		# Month of Year
 		divid = 'month-of-year';
-		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
+		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Month of Year'))
 		self.createDiv(f, divid, "div")
 		fp = open (path + '/month_of_year.dat', 'w')
@@ -898,6 +896,8 @@ class HTMLReportCreator(ReportCreator):
 			commits = 0
 			if mm in data.activity_by_month_of_year:
 				commits = data.activity_by_month_of_year[mm]
+			index = 0 if(mm > 6) else 0;
+			month_of_year_obj['data']['value'][index-1].append([MONTHS[mm-1], commits])
 			month_of_year_obj['xaxis']['value'].append(MONTHS[mm-1])
 			month_of_year_obj['yaxis']['value'].append(commits)
 			month_of_year_obj['y2axis']['value'].append(((100.0 * commits) / data.getTotalCommits()))
@@ -906,20 +906,36 @@ class HTMLReportCreator(ReportCreator):
 		activities_array['month_of_year'] = month_of_year_obj;
 
 		# Commits by year/month
-		divid = 'year-month';
-		year_month_obj = {'divid':divid, 'title':'Year Month', 'type':'1bar', 'horizontal':0, 'xaxis':{'label':'year-month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'lines-added', 'value':[]}, 'y3axis':{'label':'lines-removed', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
-		#f.write(html_header(2, 'Commits by year/month'))
-		self.createDiv(f, divid, "div")
-		for yymm in reversed(sorted(data.commits_by_month.keys())):
-			year_month_obj['xaxis']['value'].append(yymm)
-			year_month_obj['yaxis']['value'].append(data.commits_by_month.get(yymm,0))
-			year_month_obj['y2axis']['value'].append(data.lines_added_by_month.get(yymm,0))
-			year_month_obj['y3axis']['value'].append(data.lines_removed_by_month.get(yymm,0))
+		f.write('\t\t<h2 class="text-center heat-table-heading">Year/Month</h2>')
+		f.write('<table class="table plot heat-table">')
+		f.write('<tr><th>Year</th>')
+		for month in range(1, 13):
+			f.write('<th>%s</th>' % (MONTHS[month-1]))
+		f.write('</tr>')
+		yy_range = sorted(data.commits_by_year.keys())
+		max_value = sorted(data.commits_by_month.values())[-1]
+		for yy in range(yy_range[0], yy_range[-1]+1):
+			f.write('<tr><th>%d</th>' % (yy))
+			for mm in range(1, 13):
+				mm_str = "0"+str(mm) if(mm < 10) else str(mm)
+				yymm = str(yy)+"-"+mm_str
+				commits = data.commits_by_month.get(yymm,0)
+				if commits != 0:
+					f.write('<td class=data ')
+					r = 160 - int((float(commits) / max_value) * 160)
+					f.write(' style="background-color: rgb(204, %d, 0)"' % r)
+					f.write('>%d</td>' % commits)
+				else:
+					f.write('<td style="background-color:#eee">-</td>')
+				#data.lines_added_by_month.get(yymm,0)
+				#data.lines_removed_by_month.get(yymm,0)
+			f.write('</tr>')
+		f.write('</table>')
+			
 		fg = open(path + '/commits_by_year_month.dat', 'w')
 		for yymm in sorted(data.commits_by_month.keys()):
 			fg.write('%s %s\n' % (yymm, data.commits_by_month[yymm]))
 		fg.close()
-		activities_array['year_month'] = year_month_obj;
 
 		# Commits by year
 		divid = 'year-commits';
@@ -995,6 +1011,7 @@ class HTMLReportCreator(ReportCreator):
 
 		for author in data.getAuthors():
 			info = data.getAuthorInfo(author)
+			author = author.replace("'", "");
 			author_list_obj['rows'].append([author, info['commits'], math.ceil(info['commits_frac'] * 100) / 100, info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], str(info['timedelta']), len(info['active_days']), info['place_by_commits']])
 
 		author_array['author_list']=author_list_obj;
@@ -1034,8 +1051,8 @@ class HTMLReportCreator(ReportCreator):
 			fgc.write('\n')
 		fgl.close()
 		fgc.close()
-		author_array['lines_by_authors']= lines_by_authors;
-		author_array['commits_by_authors']=commits_by_authors;
+		#author_array['lines_by_authors']= lines_by_authors;
+		#author_array['commits_by_authors']=commits_by_authors;
 
 		# Authors :: Author of Month
 		f.write(html_header(2, 'Author of Month'))
@@ -1050,7 +1067,9 @@ class HTMLReportCreator(ReportCreator):
 			authors.reverse()
 			commits = data.author_of_month[yymm][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			author_of_month_obj['rows'].append([yymm, authors[0], commits, self.calculatePercentage(commits, data.commits_by_month[yymm]), data.commits_by_month[yymm], next, len(authors)])
+			next = next.replace("'", "");
+			author = authors[0].replace("'", "");
+			author_of_month_obj['rows'].append([yymm, author, commits, self.calculatePercentage(commits, data.commits_by_month[yymm]), data.commits_by_month[yymm], next, len(authors)])
 		author_array['author_of_month'] = author_of_month_obj
 
 		# Authors :: Author of Year
@@ -1066,7 +1085,9 @@ class HTMLReportCreator(ReportCreator):
 			authors.reverse()
 			commits = data.author_of_year[yy][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			author_of_year_obj['rows'].append([yy, authors[0], commits, self.calculatePercentage(commits, data.commits_by_year[yy]), data.commits_by_year[yy], next, len(authors)])
+			next = next.replace("'", "");
+			author = authors[0].replace("'", "");
+			author_of_year_obj['rows'].append([yy, author, commits, self.calculatePercentage(commits, data.commits_by_year[yy]), data.commits_by_year[yy], next, len(authors)])
 		author_array['author_of_year'] = author_of_year_obj
 		self.printDataDiv(f, 'author', author_array)
 		self.printFooter(f)
@@ -1108,9 +1129,8 @@ class HTMLReportCreator(ReportCreator):
 		# tags.html
 		tags_array = {}
 		f = open(path + '/tags.html', 'w')
-		tags_obj = {'divid':'tags-table', 'title':'Tags', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":25}
-		self.createTable(f, tags_obj['divid'], 'table');
 		self.printHeader(f, 'Tags')
+		#self.createTable(f, tags_obj['divid'], 'table');
 		tags_array['total_tags'] = len(data.tags)
 		try:
 			tags_array['average_commit_per_tag'] = 0
@@ -1124,8 +1144,9 @@ class HTMLReportCreator(ReportCreator):
 			f.write('<dt>Average commits per tag</dt><dd>%.2f</dd>' % (1.0 * data.getTotalCommits() / len(data.tags)))
 		f.write('</dl>')
 
-		for column in ("Name", "Date", "Commits", "Authors") :
-			tags_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
+		tags_obj = {'divid':'tags-table', 'title':'Tags', 'type':'table-dom', 'horizontal':0, 'column_headers':[None, None, None, None], "sort_index":1, "sort_order":"desc", "show_count":10}
+		f.write('<table id=tags-table cellpadding=0 cellspacing=0 class="table table-bordered display">')
+		f.write('<thead><tr><th>Name</th><th>Date</th><th>Commits</th><th>Authors</th></tr></thead><tbody>')
 		# sort the tags by date desc
 		tags_sorted_by_date_desc = map(lambda el : el[1], reversed(sorted(map(lambda el : (el[1]['date'], el[0]), data.tags.items()))))
 		for tag in tags_sorted_by_date_desc:
@@ -1133,7 +1154,9 @@ class HTMLReportCreator(ReportCreator):
 			self.authors_by_commits = getkeyssortedbyvalues(data.tags[tag]['authors'])
 			for i in reversed(self.authors_by_commits):
 				authorinfo.append('%s (%d)' % (i, data.tags[tag]['authors'][i]))
-			tags_obj['rows'].append([data.tags[tag]['date'], data.tags[tag]['commits'], ', '.join(authorinfo)])
+			f.write('<tr><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>' % (tag, data.tags[tag]['date'], data.tags[tag]['commits'], ', '.join(authorinfo)))
+		f.write('</tbody></table>')
+
 		tags_array['tags_obj'] = tags_obj
 		self.printDataDiv(f, 'tags', tags_array)
 		self.printFooter(f)
@@ -1250,6 +1273,7 @@ class HTMLReportCreator(ReportCreator):
 	<script type="text/javascript" src="assets/js/jquery.jqplot.min.js" ></script>
 	<script type="text/javascript" src="assets/js/jqplot.barRenderer.min.js"></script>
 	<script type="text/javascript" src="assets/js/jqplot.pieRenderer.min.js"></script>
+	<script type="text/javascript" src="assets/js/jqplot.donutRenderer.min.js"></script>
 	<script type="text/javascript" src="assets/js/jqplot.categoryAxisRenderer.min.js"></script>
 	<script type="text/javascript" src="assets/js/jqplot.canvasTextRenderer.min.js"></script>
 	<script type="text/javascript" src="assets/js/jqplot.canvasAxisLabelRenderer.min.js"></script>
