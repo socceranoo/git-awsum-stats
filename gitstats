@@ -765,6 +765,16 @@ class HTMLReportCreator(ReportCreator):
 		f = open(path + "/index.html", 'w')
 		format = '%b %d %Y %H:%M:%S'
 		self.printHeader(f, 'Index', data.projectname)
+		f.write("""
+		<div class=row>
+			<div class='span2 text-center'>
+			</div>
+			<div class='span8 text-center ipad-bg'>
+		""")
+		f.write("""
+			</div>
+		</div>
+		""")
 
 		f.write('\t\t<dl>\n')
 		f.write('\t\t\t<dt>Project name</dt><dd>%s</dd>\n' % (data.projectname))
