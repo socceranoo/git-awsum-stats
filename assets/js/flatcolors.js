@@ -49,13 +49,17 @@ var master_color_array = [
 	__grayLighter,
 	__gray,
 	__purple,
+	__clouds,
+	__midnightBlue,
+	__nephritis,
+	__wisteria,
+	__belizeHole,
+	__pomegranate,
    */
 	__wetAsphalt,
-	__midnightBlue,
 	__grayDarker,
 	__grayDark,
 	__silver,
-	__clouds,
 	__blue,
 	__blueDark,
 	__green,
@@ -66,21 +70,52 @@ var master_color_array = [
 	__turquoise,
 	__greenSea,
 	__emerald,
-	__nephritis,
 	__peterRiver,
-	__belizeHole,
 	__amethyst,
-	__wisteria,
 	__sunFlower,
 	__carrot,
 	__pumpkin,
 	__alizarin,
-	__pomegranate,
 	__concrete,
-	__asbestos,
+	__asbestos
+];
+
+var dark_flat_colors = [
+	__blueDark,
+	__green,
+	__red,
+	__wetAsphalt,
+	__grayDarker,
+	__grayDark,
+	__turquoise,
+	__peterRiver,
+	__amethyst,
+	__pumpkin,
+	__alizarin,
+	__asbestos
+];
+
+var seven_colors = [
+	__greenSea,
+	__pumpkin,
+	__amethyst,
+	__peterRiver,
+	__alizarin,
+	__blueDark,
+	__wetAsphalt,
 ];
 
 var websafe_color_array =[];
+function color_subset(arr, size){
+	var shuffled = arr.slice(0), i = arr.length, temp, index;
+	while (i--) {
+		index = Math.floor(i * Math.random());
+		temp = shuffled[index];
+		shuffled[index] = shuffled[i];
+		shuffled[i] = temp;
+	}
+	return shuffled.slice(0, size);
+}
 function get_random_colors(size, option){
 	var arr = (option === 0)?master_color_array:websafe_color_array;
 	var shuffled = arr.slice(0), i = arr.length, temp, index;
@@ -115,7 +150,7 @@ function get_random_colors(size, option){
 				val_b = k*16 + k;
 				val = rgbToHex(val_r, val_g, val_b);
 				websafe_color_array.push(val);
-				console.log(val);
+				//console.log(val);
 			}
 		}
 	}

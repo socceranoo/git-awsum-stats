@@ -60,6 +60,8 @@ function init_bar_graph(div_object) {
 	var limit = (div_object.yaxis.value.length > upperlimit)?upperlimit:div_object.yaxis.value.length;
 	var chart_values = {"xaxis": div_object.xaxis.value.slice(0, limit), "yaxis":div_object.yaxis.value.slice(0, limit)};
 	if (div_object.horizontal) {
+		chart_values.xaxis = [];
+		chart_values.yaxis = [];
 		for (var i = 0; i < limit; i++) {
 			chart_values.xaxis.unshift(div_object.xaxis.value[i]);
 			chart_values.yaxis.unshift(div_object.yaxis.value[i]);
@@ -71,7 +73,7 @@ function init_bar_graph(div_object) {
 	var min_y = 0;
 	var step = max/numpoints;
 	var max_y = step * (numpoints + 1);
-	var color_arr = get_random_colors(limit, 1);
+	var color_arr = get_random_colors(limit, 0);
 	var values = {divid:div_object.divid, horizontal:div_object.horizontal, xaxis_values:chart_values.xaxis, yaxis_values:chart_values.yaxis, graph_title:div_object.title, color_arr:color_arr, numberformat:div_object.numberformat, xlabel:div_object.xaxis.label, ylabel:div_object.yaxis.label, axis_min:min_y, axis_max:max_y};
 	//alert(JSON.stringify(values));
 	$("#"+values.divid).html("");
@@ -93,8 +95,11 @@ function init_bar_graph(div_object) {
 	general.setChartOptions("cursor", {show:false});
 	general.setChartOptions("axesDefaults", { min: values.axis_min, tickOptions: { formatString: values.numberformat}});
 	general.setChartOptions("animate", !$.jqplot.use_excanvas);
-	general.setChartOptions("seriesColors", values.color_arr);
-	general.setChartLevel3Options("seriesDefaults", "rendererOptions", "varyBarColor", true);
+	general.setChartOptions("seriesColors", color_arr);
+	if (div_object.y2axis.value.length) {
+		//general.setChartOptions("series", [{pointLabels:{show:true, labels:div_object.y2axis.value}}]);
+	}
+	general.setChartLevel3Options("seriesDefaults", "rendererOptions", "varyBarColor", false);
 
 	general.setChartLevel2Options("grid", "borderWidth", 1.0);
 	general.setChartLevel2Options("grid", "gridLineColor", "#ccc");
@@ -110,12 +115,13 @@ function init_pie_donut_chart(div_object) {
 	var data = div_object.data.value;
 	var renderer = $.jqplot.PieRenderer;
 	var fill = false;
+	var legend = { show:false, rendererOptions: {location:'e'}};
 	if (div_object.type == "donut") {
 		renderer = $.jqplot.DonutRenderer;
 		fill = true;
+		legend = { show:false, rendererOptions: {location:'e'}};
 	}
 	var backEnd = new jqPlotChart(div_object.divid, renderer, data);
-	var legend = { show:false, rendererOptions: {location:'e'}};
 	//var legend = { show:true, rendererOptions: { animate:{show:true}}, location:'e', marginTop: '7px' };
 	//var legend = { show:false};
 	var color_arr = get_random_colors(limit, 0);
@@ -123,34 +129,43 @@ function init_pie_donut_chart(div_object) {
 	backEnd.setChartOptions("legend", legend);
 	backEnd.setChartOptions("highlighter", { show: false });
 	backEnd.setChartOptions("animate", !$.jqplot.use_excanvas);
-	backEnd.setChartOptions("seriesColors", color_arr);
+	if (div_object.data.value.length === 7) {
+		//color_arr = ["#c3325f","#27ae60","#049cdb","#9b59b6","#16a085","#8e44ad","#bdc3c7"];
+	}
+	var total = 0;
+	backEnd.setChartOptions("seriesColors", seven_colors);
 	backEnd.setChartOptions("cursor", {show:false});
 	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "barMargin", 20);
 	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "fill", fill);
 	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "lineWidth", 6);
-	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "sliceMargin", 4);
-	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "dataLabels", 'label');
+	backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "sliceMargin", 7);
+	if (div_object.datalabels)
+		backEnd.setChartLevel3Options("seriesDefaults", "rendererOptions", "dataLabels", div_object.datalabels);
 	backEnd.setChartLevel2Options("grid", "borderWidth", 0);
 	backEnd.setChartLevel2Options("grid", "shadow", false);
 	backEnd.drawChart();
 
 	//$("#"+div_object.divid).html($("#"+div_object.divid).html()+"<a id=change-colors class='btn btn-primary'>Change Colors</a>");
 
-	$("#change-colors").click(function () {
-		backEnd.setChartOptions("seriesColors", get_random_colors(limit, 0));
-		backEnd.rePlot();
-	});
+	/*
+	 *$("#change-colors").click(function () {
+	 *    backEnd.setChartOptions("seriesColors", get_random_colors(limit, 0));
+	 *    backEnd.rePlot();
+	 *});
+	 */
 }
 /*
-function draw_timeline_graph (hits, hotspots, title) {
-	$("#chart2").html("");
+*/
+function init_line_graph (div_object) {
+	$("#"+div_object.divid).html("");
 	//var line2 = [['2004', 42], ['2005', 56], ['2008', 39], ['2010', 81]];
 	//var line3 = [['2004', 0.04], ['2005', 0.65], ['2008', 0.23], ['2010', 1.20]];
-	var legend = { show:true, placement: 'inside', xoffset: 12, yoffset: 12, rendererOptions: { numberRows: 2, animate:{show:true}}, location:'nw'};
-	var max = Math.max.apply(Math, hits);
+	var legend = { show:false, placement: 'inside', xoffset: 12, yoffset: 12, rendererOptions: { numberRows: 2, animate:{show:true}}, location:'nw'};
+	var max = Math.max.apply(Math, div_object.line1.value);
 	var step = max/5;
-	var plot2 = $.jqplot('chart2', [hits, hotspots], {
-		title: title,
+	var color = color_subset(dark_flat_colors, 1)[0];
+	var plot2 = $.jqplot(div_object.divid, [div_object.line1.value], {
+		title: div_object.title,
 		animate:true,
 		grid: {
 			gridLineColor:"#eee"
@@ -169,21 +184,16 @@ function draw_timeline_graph (hits, hotspots, title) {
 		seriesDefaults: {
 			rendererOptions: {
 				smooth: true
-			}
+			},
+			fill:false
 		},
 		series:[ 
 			{
-				// Change our line width and use a diamond shaped marker.
-				lineWidth:2,
-				markerOptions: { style:'diamond' },
-				yaxis:'y2axis',
-				label:'Hits'
-			},
-			{
 				// Don't show a line, just show markers.  Make the markers 7 pixels with an 'x' style
-				//showLine:false, 
-				markerOptions: { size: 7, style:"y" },
-				label:'Hotspots'
+				//showLine:false,
+				markerOptions: { size: 7, style:"x" },
+				label:div_object.line1.label,
+				color:color
 			}
 		],
 		axes: {
@@ -193,37 +203,34 @@ function draw_timeline_graph (hits, hotspots, title) {
 				labelRenderer: $.jqplot.CanvasAxisLabelRenderer,
 				tickRenderer: $.jqplot.CanvasAxisTickRenderer,
 				tickOptions: {
-					//labelPosition: 'middle',
-					formatString:'%Y',
-					angle: 15
+					labelPosition: 'middle',
+					formatString:div_object.dateformat,
+					//formatString:'%b-%Y',
+					angle: -25
 				},
-				min:'2004',
-				tickInterval:'1 year'
+				min:div_object.line1.min,
+				tickInterval:div_object.line1.interval
 			},
 			yaxis: {
-				label: 'HotSpots',
+				label: div_object.line1.label,
 				min:0,
-				//tickOptions : {formatString:"%.2f"},
 				labelRenderer: $.jqplot.CanvasAxisLabelRenderer
 			},
-			y2axis: {
-				label: 'Hits',
-				min:0,
-				labelRenderer: $.jqplot.CanvasAxisLabelRenderer
-			}
 		}
 	});
 
 }
-*/
 function domdatatable(table_obj) {
 	/* Data set - can contain whatever information you want */
+	if ($('#'+table_obj.divid+" tr").length < 2)
+		return;
 	$('#'+table_obj.divid).dataTable(
 		{
 			"bPaginate": true, "bLengthChange": true, "bFilter": true, "bSort": true, "bInfo": true, "bAutoWidth": true,"aoColumns": table_obj.column_headers,
 			"iDisplayLength":table_obj.show_count, "aaSorting":[[table_obj.sort_index, table_obj.sort_order]]	
 		}
 	);	
+	$('#'+table_obj.divid).show();
 	//$('#'+table_obj.divid).css('width', '');
 }
 function newdatatable(table_obj) {

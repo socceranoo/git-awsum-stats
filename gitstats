@@ -387,7 +387,7 @@ class GitDataCollector(DataCollector):
 
 			# author stats
 			if author not in self.authors:
-				self.authors[author] = {}
+				self.authors[author] = {'stamp':[]}
 			# commits, note again that commits may be in any date order because of cherry-picking and patches
 			if 'last_commit_stamp' not in self.authors[author]:
 				self.authors[author]['last_commit_stamp'] = stamp
@@ -397,6 +397,7 @@ class GitDataCollector(DataCollector):
 				self.authors[author]['first_commit_stamp'] = stamp
 			if stamp < self.authors[author]['first_commit_stamp']:
 				self.authors[author]['first_commit_stamp'] = stamp
+			self.authors[author]['stamp'].append(stamp)
 
 			# author of the month/year
 			yymm = date.strftime('%Y-%m')
@@ -607,7 +608,7 @@ class GitDataCollector(DataCollector):
 							# clock skew, keep old timestamp to avoid having ugly graph
 							stamp = oldstamp
 						if author not in self.authors:
-							self.authors[author] = { 'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
+							self.authors[author] = { 'stamp':[], 'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
 						self.authors[author]['commits'] = self.authors[author].get('commits', 0) + 1
 						self.authors[author]['lines_added'] = self.authors[author].get('lines_added', 0) + inserted
 						self.authors[author]['lines_removed'] = self.authors[author].get('lines_removed', 0) + deleted
@@ -764,29 +765,74 @@ class HTMLReportCreator(ReportCreator):
 	def indexhtml(self, data, path):
 		f = open(path + "/index.html", 'w')
 		format = '%b %d %Y %H:%M:%S'
+		format = '%b %d %Y'
 		self.printHeader(f, 'Index', data.projectname)
+		commits_per_tag = 0.0
+		if (len(data.tags)):
+			commits_per_tag = (1.0 * data.getTotalCommits() / len(data.tags))
 		f.write("""
 		<div class=row>
-			<div class='span2 text-center'>
-			</div>
-			<div class='span8 text-center ipad-bg'>
-		""")
-		f.write("""
+			<div id=myCarousel class='offset3 span6 text-center carousel slide ipad-bg'>
+				<h2 class=heading>%s</h2>
+				<div class="text-center home-stats carousel-inner">
+					<div class="item">
+						<h2 class=count>%s</h2>
+						<h2 class=string>files</h2>
+						<span>%d types</span>
+						<h5>&nbsp</h5>
+					</div>
+					<div class="item">
+						<h2 class=count>%s</h2>
+						<h2 class=string>lines</h2>
+						<span>%d added, %d removed</span>
+						<h5>&nbsp</h5>
+					</div>
+					<div class="item">
+						<h2 class=count>%d</h2>
+						<h2 class=string>tags</h2>
+						<span>%.1f commits per tag</span>
+						<h5>&nbsp</h5>
+					</div>
+					<div class="item active">
+						<h2 class=count>%s</h2>
+						<h2 class=string>commits</h2>
+						<span>%s - %s</span>
+						<h5>&nbsp</h5>
+					</div>
+					<div class="item">
+						<h2 class=count>%s</h2>
+						<h2 class=string>authors</h2>
+						<span>%.1f commits per author</span>
+						<h5>&nbsp</h5>
+					</div>
+					<div class="item">
+						<h2 class=count>%s</h2>
+						<h2 class=string>active days</h2>
+						<span>%d total days</span>
+						<h5>&nbsp</h5>
+					</div>
+				</div>
+				<div>
+					<a class="control" href="#myCarousel" data-slide="prev">&lsaquo;</a>
+					&nbsp; &nbsp; &nbsp; &nbsp;
+					<a class="control" href="#myCarousel" data-slide="next">&rsaquo;</a>
+				</div>
+				<span>(c)git-awsum-stats %s (%d seconds)</span>
 			</div>
 		</div>
-		""")
+		""" % (data.projectname, data.getTotalFiles(), len(data.extensions.keys()), data.getTotalLOC(), data.total_lines_added, data.total_lines_removed, len(data.tags), commits_per_tag, data.getTotalCommits(), data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format), data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors(), len(data.getActiveDays()), data.getCommitDeltaDays(), datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
 
-		f.write('\t\t<dl>\n')
-		f.write('\t\t\t<dt>Project name</dt><dd>%s</dd>\n' % (data.projectname))
-		f.write('\t\t\t<dt>Generated</dt><dd>%s (in %d seconds)</dd>\n' % (datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
-		f.write('\t\t\t<dt>Generator</dt><dd><a href="http://gitstats.sourceforge.net/">GitStats</a> (version %s), %s, %s</dd>\n' % (getversion(), getgitversion(), getgnuplotversion()))
-		f.write('\t\t\t<dt>Report Period</dt><dd>%s to %s</dd>\n' % (data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format)))
-		f.write('\t\t\t<dt>Age</dt><dd>%d days, %d active days (%3.2f%%)</dd>\n' % (data.getCommitDeltaDays(), len(data.getActiveDays()), (100.0 * len(data.getActiveDays()) / data.getCommitDeltaDays())))
-		f.write('\t\t\t<dt>Total Files</dt><dd>%s</dd>\n' % data.getTotalFiles())
-		f.write('\t\t\t<dt>Total Lines of Code</dt><dd>%s (%d added, %d removed)</dd>\n' % (data.getTotalLOC(), data.total_lines_added, data.total_lines_removed))
-		f.write('\t\t\t<dt>Total Commits</dt><dd>%s (average %.1f commits per active day, %.1f per all days)</dd>\n' % (data.getTotalCommits(), float(data.getTotalCommits()) / len(data.getActiveDays()), float(data.getTotalCommits()) / data.getCommitDeltaDays()))
-		f.write('\t\t\t<dt>Authors</dt><dd>%s (average %.1f commits per author)</dd>\n' % (data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors()))
-		f.write('\t\t</dl>\n')
+		#f.write('\t\t<dl>\n')
+		#f.write('\t\t\t<dt>Project name</dt><dd>%s</dd>\n' % (data.projectname))
+		#f.write('\t\t\t<dt>Generated</dt><dd>%s (in %d seconds)</dd>\n' % (datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
+		#f.write('\t\t\t<dt>Generator</dt><dd><a href="http://gitstats.sourceforge.net/">GitStats</a> (version %s), %s, %s</dd>\n' % (getversion(), getgitversion(), getgnuplotversion()))
+		#f.write('\t\t\t<dt>Report Period</dt><dd>%s to %s</dd>\n' % (data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format)))
+		#f.write('\t\t\t<dt>Age</dt><dd>%d days, %d active days (%3.2f%%)</dd>\n' % (data.getCommitDeltaDays(), len(data.getActiveDays()), (100.0 * len(data.getActiveDays()) / data.getCommitDeltaDays())))
+		#f.write('\t\t\t<dt>Total Files</dt><dd>%s</dd>\n' % data.getTotalFiles())
+		#f.write('\t\t\t<dt>Total Lines of Code</dt><dd>%s (%d added, %d removed)</dd>\n' % (data.getTotalLOC(), data.total_lines_added, data.total_lines_removed))
+		#f.write('\t\t\t<dt>Total Commits</dt><dd>%s (average %.1f commits per active day, %.1f per all days)</dd>\n' % (data.getTotalCommits(), float(data.getTotalCommits()) / len(data.getActiveDays()), float(data.getTotalCommits()) / data.getCommitDeltaDays()))
+		#f.write('\t\t\t<dt>Authors</dt><dd>%s (average %.1f commits per author)</dd>\n' % (data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors()))
+		#f.write('\t\t</dl>\n')
 
 		self.printFooter(f)
 		f.close()
@@ -794,6 +840,7 @@ class HTMLReportCreator(ReportCreator):
 	def activityhtml(self, data, path):
 		###
 		# Activity
+		totalcommits = data.getTotalCommits()
 		activities_array = {}
 		f = open(path + '/activity.html', 'w')
 		self.printHeader(f, 'Activity')
@@ -801,58 +848,41 @@ class HTMLReportCreator(ReportCreator):
 		# Weekly activity
 		WEEKS = 32
 		divid = 'weekly-activity'
-		weekly_activity = {'divid':divid, 'title':'Weekly Activity (Last '+str(WEEKS)+' weeks)', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'week', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'none', 'value':[]}, 'upperlimit':WEEKS, 'numberformat':'%d'}
+		dateformat = '%b-%d %y';
+		weekly_activity = {'divid':divid, 'title':'Weekly Activity (Last '+str(WEEKS)+' weeks)', 'type':'line', 'horizontal':0, 'xaxis':{'label':'week', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':"7 days"}, 'y2axis':{'label':'none', 'value':[]}, 'upperlimit':WEEKS, 'numberformat':'%d', 'dateformat':dateformat}
 		#f.write(html_header(2, 'Weekly activity'))
-		self.createDiv(f, divid, "div")
+		self.createPlotDiv(f, divid, "div")
 		# generate weeks to show (previous N weeks from now)
 		now = datetime.datetime.now()
 		deltaweek = datetime.timedelta(7)
-		weeks = []
+		weeks = [[], []]
 		stampcur = now
 		for i in range(0, WEEKS):
-			weeks.insert(0, stampcur.strftime('%Y-%W'))
+			weeks[0].insert(0, stampcur.strftime('%Y-%W'))
+			weeks[1].insert(0, stampcur)
 			stampcur -= deltaweek
 		# top row: commits & bar
+		weekly_activity['line1']['min'] = weeks[1][0].strftime(dateformat)
 		for i in range(0, WEEKS):
 			commits = 0
 			#percentage = 0
-			if weeks[i] in data.activity_by_year_week:
-				commits = data.activity_by_year_week[weeks[i]]
-				#percentage = float(data.activity_by_year_week[weeks[i]]) / data.activity_by_year_week_peak
+			if weeks[0][i] in data.activity_by_year_week:
+				commits = data.activity_by_year_week[weeks[0][i]]
+				#percentage = float(data.activity_by_year_week[weeks[0][i]]) / data.activity_by_year_week_peak
 			#height = max(1, int(200 * percentage))
 			weekly_activity['yaxis']['value'].append(commits)
 			weekly_activity['xaxis']['value'].append((WEEKS - i))
+			weekly_activity['line1']['value'].append([weeks[1][i].strftime(dateformat), commits])
 			#f.write('<td style="text-align: center; vertical-align: bottom">%d<div style="display: block; background-color: red; width: 20px; height: %dpx"></div></td>' % (commits, height))
 
-		activities_array['weekly_activity'] = weekly_activity;
+		activities_array['weekly_activity'] = weekly_activity
 
-		# Hour of Day
-
-		divid = 'hour-of-day'
-		hour_of_day_obj = {'divid':divid, 'title':'Hour of Day', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'hour', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':24, 'numberformat':'%d'}
-		#f.write(html_header(2, 'Hour of Day'))
-		self.createDiv(f, divid, "div")
-		hour_of_day = data.getActivityByHourOfDay()
-		fp = open(path + '/hour_of_day.dat', 'w')
-		totalcommits = data.getTotalCommits()
-		for i in range(0, 24):
-			if i in hour_of_day:
-				#r = 127 + int((float(hour_of_day[i]) / data.activity_by_hour_of_day_busiest) * 128)
-				#f.write('<td style="background-color: rgb(%d, 0, 0)">%d</td>' % (r, hour_of_day[i]))
-				hour_of_day_obj['yaxis']['value'].append(hour_of_day[i])
-				hour_of_day_obj['xaxis']['value'].append(i+1)
-				hour_of_day_obj['y2axis']['value'].append(((100.0 * hour_of_day[i]) / totalcommits))
-				fp.write('%d %d\n' % (i + 1, hour_of_day[i]))
-			else:
-				fp.write('%d 0\n' % (i + 1))
-		fp.close()
-		activities_array['hour_of_day'] = hour_of_day_obj;
 
 		# Day of Week
-		divid = 'day-of-week';
-		day_of_week_obj = {'divid':divid, 'title':'Day of Week', 'type':'pie', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':7, 'numberformat':'%d'}
+		divid = 'day-of-week'
+		day_of_week_obj = {'divid':divid, 'title':'Day of Week', 'type':'pie', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'datalabels':[], 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':7, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Day of Week'))
-		self.createDiv(f, divid, "div")
+		self.createPlotDiv(f, divid, "div")
 		day_of_week = data.getActivityByDayOfWeek()
 		fp = open(path + '/day_of_week.dat', 'w')
 		for d in range(0, 7):
@@ -865,14 +895,47 @@ class HTMLReportCreator(ReportCreator):
 			day_of_week_obj['xaxis']['value'].append(WEEKDAYS[d])
 			if d in day_of_week:
 				day_of_week_obj['y2axis']['value'].append(((100.0 * day_of_week[d]) / totalcommits))
+				labelstr = WEEKDAYS[d] + "("+"%.1f" % (100.0 * day_of_week[d] / totalcommits) + "%)"
 			else:
 				day_of_week_obj['y2axis']['value'].append(0.00)
+				labelstr = WEEKDAYS[d] + "(0%)"
+			day_of_week_obj['datalabels'].append(labelstr)
 		fp.close()
-		activities_array['day_of_week'] = day_of_week_obj;
-		f.write("<a href='javascript:void(0);' class='btn btn-primary' id=change-colors>Change Colors</a>")
+		activities_array['day_of_week'] = day_of_week_obj
+		#f.write("<a href='javascript:void(0);' class='btn btn-primary' id=change-colors>Change Colors</a>")
 
-		divid = 'hour-of-week';
+		# Hour of Day
+		divid = 'hour-of-day'
+		hour_of_day_obj = {'divid':divid, 'title':'Hour of Day', 'type':'canvas', 'data':[], 'xaxis':{'label':'hour', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'upperlimit':24, 'numberformat':'%d'}
+		#f.write(html_header(2, 'Hour of Day'))
+		hour_of_day = data.getActivityByHourOfDay()
+		max_hour = data.activity_by_hour_of_day_busiest
+		fp = open(path + '/hour_of_day.dat', 'w')
+		f.write("""
+			<h2 class="text-center heat-table-heading">Hour of day</h2>
+			<div class='offset2 span8 text-center clock clearfix'>
+				<canvas id=%s width=600px height=600px></canvas>
+			</div>
+		""" % (divid))
+		for i in range(0, 24):
+			if i in hour_of_day:
+				#r = 127 + int((float(hour_of_day[i]) / data.activity_by_hour_of_day_busiest) * 128)
+				#f.write('<td style="background-color: rgb(%d, 0, 0)">%d</td>' % (r, hour_of_day[i]))
+				hour_of_day_obj['yaxis']['value'].append(hour_of_day[i])
+				value = hour_of_day[i]
+				hour_of_day_obj['xaxis']['value'].append(i+1)
+				fp.write('%d %d\n' % (i + 1, hour_of_day[i]))
+			else:
+				fp.write('%d 0\n' % (i + 1))
+				value = 0
+			#factor = float(float(24 - index)/ 24)
+			factor = float(float(value)/ float(max_hour))
+			hour_of_day_obj['data'].append({'factor':factor, 'value':value, 'hour':i+1})
+		fp.close()
+		activities_array['hour_of_day'] = hour_of_day_obj
+
 		# Hour of Week
+		divid = 'hour-of-week'
 		f.write('\t\t<h2 class="text-center heat-table-heading">Hour of Week</h2>')
 		f.write('<table class="table plot heat-table">')
 		f.write('<tr><th>Day</th>')
@@ -897,23 +960,35 @@ class HTMLReportCreator(ReportCreator):
 		f.write('</table>')
 
 		# Month of Year
-		divid = 'month-of-year';
+		divid = 'month-of-year'
 		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Month of Year'))
-		self.createDiv(f, divid, "div")
+		self.createPlotDiv(f, divid, "div")
 		fp = open (path + '/month_of_year.dat', 'w')
+		f.write("""
+			<h2 class="text-center heat-table-heading">Commits by Month</h2>
+			<div class=row>
+		""")
 		for mm in range(1, 13):
 			commits = 0
 			if mm in data.activity_by_month_of_year:
 				commits = data.activity_by_month_of_year[mm]
-			index = 0 if(mm > 6) else 0;
+			index = 0 if(mm > 6) else 0
 			month_of_year_obj['data']['value'][index-1].append([MONTHS[mm-1], commits])
 			month_of_year_obj['xaxis']['value'].append(MONTHS[mm-1])
 			month_of_year_obj['yaxis']['value'].append(commits)
 			month_of_year_obj['y2axis']['value'].append(((100.0 * commits) / data.getTotalCommits()))
 			fp.write('%d %d\n' % (mm, commits))
+			f.write("""
+				<div class="span2 text-center well month">
+					<h3>%s</h3>
+					<h4>%d</h4>
+					<h5>%.1f</h5>
+				</div>
+			""" % (MONTHS[mm-1], commits, 100.0 * commits / data.getTotalCommits()))
 		fp.close()
-		activities_array['month_of_year'] = month_of_year_obj;
+		f.write("</div>")
+		activities_array['month_of_year'] = month_of_year_obj
 
 		# Commits by year/month
 		f.write('\t\t<h2 class="text-center heat-table-heading">Year/Month</h2>')
@@ -948,41 +1023,107 @@ class HTMLReportCreator(ReportCreator):
 		fg.close()
 
 		# Commits by year
-		divid = 'year-commits';
-		year_obj = {'divid':divid, 'title':'Yearly Activity', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'year', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'y3axis':{'label':'lines-added', 'value':[]}, 'y4axis':{'label':'lines-removed', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
+		divid = 'year-commits'
+		year_obj = {'divid':divid, 'title':'Yearly Activity', 'type':'donut', 'horizontal':0, 'datalabels':[], 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'year', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'y3axis':{'label':'lines-added', 'value':[]}, 'y4axis':{'label':'lines-removed', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Commits by Year'))
-		self.createDiv(f, divid, "div")
+		self.createPlotDiv(f, divid, "div")
 		for yy in reversed(sorted(data.commits_by_year.keys())):
 			year_obj['xaxis']['value'].append(yy)
 			year_obj['yaxis']['value'].append(data.commits_by_year.get(yy,0))
+			year_obj['data']['value'][0].append([str(yy), data.commits_by_year.get(yy,0)])
+			labelstr = str(yy) + "("+"%.1f" % (100.0 * data.commits_by_year.get(yy,0) / totalcommits) + "%)"
+			labelstr = str(yy) + "("+str(data.commits_by_year.get(yy,0)) + ")"
 			year_obj['y2axis']['value'].append(((100.0 * data.commits_by_year.get(yy,0)) / data.getTotalCommits()))
 			year_obj['y3axis']['value'].append(data.lines_added_by_year.get(yy,0))
 			year_obj['y4axis']['value'].append(data.lines_removed_by_year.get(yy,0))
+			year_obj['datalabels'].append(labelstr)
 		fg = open(path + '/commits_by_year.dat', 'w')
 		for yy in sorted(data.commits_by_year.keys()):
 			fg.write('%d %d\n' % (yy, data.commits_by_year[yy]))
 		fg.close()
-		activities_array['year'] = year_obj;
+		activities_array['year'] = year_obj
 
 		# Commits by timezone
-		divid = 'timezone-commits';
-		timezone_obj = {'divid':divid, 'title':'Commits by Timezone', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'timezone', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'upperlimit':24, 'numberformat':'%d'}
+		divid = 'timezone-commits'
+		timezone_obj = {'divid':divid, 'title':'Commits by Timezone', 'type':'1bar', 'horizontal':0, 'xaxis':{'label':'timezone', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'upperlimit':24, 'numberformat':'%s'}
 		#f.write(html_header(2, 'Commits by Timezone'))
-		self.createDiv(f, divid, "div")
+		#self.createPlotDiv(f, divid, "div")
+		f.write('<h2 class="text-center heat-table-heading">Commits by Timezone</h2>')
 		max_commits_on_tz = max(data.commits_by_timezone.values())
-		for i in sorted(data.commits_by_timezone.keys(), key = lambda n : int(n)):
-			commits = data.commits_by_timezone[i]
-			timezone_obj['xaxis']['value'].append(i)
-			timezone_obj['yaxis']['value'].append(commits)
+		f.write("""
+			<div class="world-map clearfix">
+		""")
+		utc = []
+		for i in range(-10, 14):
+			tz = "00"
+			tz2 = "00"
+			tz3 = "00"
+			if (i < 0):
+				if (i > -10):
+					tz = "-0"+str(i * (-1))+"00"
+					tz2 = "-0"+str(i * (-1))+"30"
+				elif (i == -10):
+					tz = str(i)+"00"
+					tz2 = str(i)+"30"
+					tz3 = "+1330"
+				else:
+					tz = str(i)+"00"
+					tz2 = str(i)+"30"
+				utc.append(str(i))
+			elif (i == 0):
+				tz = "+0000"
+				tz2 = "+0030"
+				utc.append("UTC")
+			else:
+				if (i < 10):
+					tz = "+0"+str(i)+"00"
+					tz2 = "+0"+str(i)+"30"
+				elif (i == 13):
+					tz = "+"+str(i)+"00"
+					utc.insert(0, "-11")
+				else:
+					tz = "+"+str(i)+"00"
+					tz2 = "+"+str(i)+"30"
+				utc.append("+"+str(i))
+		#for i in sorted(data.commits_by_timezone.keys(), key = lambda n : int(n)):
+			commits = data.commits_by_timezone.get(tz, 0)
+			commits2 = data.commits_by_timezone.get(tz2, 0)
+			commits3 = data.commits_by_timezone.get(tz3, 0)
+			commits = commits + commits2 + commits3
+			if (i == 13):
+				timezone_obj['xaxis']['value'].insert(0, "-1100")
+				timezone_obj['yaxis']['value'].insert(0, commits)
+			else:
+				timezone_obj['xaxis']['value'].append(tz)
+				timezone_obj['yaxis']['value'].append(commits)
 			#r = 127 + int((float(commits) / max_commits_on_tz) * 128)
 			#f.write('<tr><th>%s</th><td style="background-color: rgb(%d, 0, 0)">%d</td></tr>' % (i, r, commits))
-		activities_array['timezone'] = timezone_obj;
+			#f.write('<tr><th>%s</th><td style="background-color: rgb(%d, 0, 0)">%d</td></tr>' % (i, r, commits))
+		secondrow = ""
+		for i in timezone_obj['yaxis']['value']:
+			r = 160 - int((float(i) / max_commits_on_tz) * 160)
+			if (i != 0) :
+				f.write('<div class="timezone" style="background-color: rgb(204, %d, 0)"></div>' % (r))
+			else:
+				f.write('<div class="timezone"></div>')
+			secondrow = secondrow + "<td>%d</td>" % (i)
+		#activities_array['timezone'] = timezone_obj
+		f.write("""
+			</div>
+		""")
+		f.write('<table class=timezone-table><tr>')
+		for i in utc:
+			if (i != "+13"):
+				f.write('<th>%s</th>' % (i))
+		f.write('</tr>')
+		f.write('<tr>%s</tr>' % (secondrow))
+		f.write('</table>')
 
 		# Domains
-		divid = 'domain-commits';
+		divid = 'domain-commits'
 		domain_obj = {'divid':divid, 'title':'Commits by Domain', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'domain', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
 		#f.write(html_header(2, 'Commits by Domains'))
-		self.createDiv(f, divid, "div")
+		self.createPlotDiv(f, divid, "div")
 		domains_by_commits = getkeyssortedbyvaluekey(data.domains, 'commits')
 		domains_by_commits.reverse() # most first
 		fp = open(path + '/domains.dat', 'w')
@@ -999,7 +1140,7 @@ class HTMLReportCreator(ReportCreator):
 			domain_obj['y2axis']['value'].append((100.0 * commits / data.getTotalCommits()))
 			fp.write('%s %d %d\n' % (domain, n , info['commits']))
 		fp.close()
-		activities_array['domain'] = domain_obj;
+		activities_array['domain'] = domain_obj
 		self.printDataDiv(f, 'activity', activities_array)
 		self.printFooter(f)
 		f.close()
@@ -1012,19 +1153,24 @@ class HTMLReportCreator(ReportCreator):
 		self.printHeader(f, 'Authors')
 
 		# Authors :: List of authors
-		f.write(html_header(2, 'List of Authors'))
-		author_list_obj = {'divid':'author-list', 'title':'List of authors', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":10}
-		self.createTable(f, author_list_obj['divid'], 'table');
+		f.write('<h2 class="text-center heat-table-heading">List of Authors</h2>')
+		author_list_obj = {'divid':'author-list', 'title':'List of Authors', 'type':'table-dom', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":10}
 
+		f.write('<table id=author-list cellpadding=0 cellspacing=0 class="table table-bordered dom-table display">')
+		f.write('<thead><tr>')
 		for column in ("Author", "Commits", "%", "lines-added", "lines-removed", "First commit", "Last commit", "Age", "Active days", "Rank") :
-			author_list_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
+			author_list_obj['column_headers'].append(None)
+			f.write('<th>%s</th>' % (column))
+
+		f.write('</tr></thead><tbody>')
 
 		for author in data.getAuthors():
 			info = data.getAuthorInfo(author)
-			author = author.replace("'", "");
-			author_list_obj['rows'].append([author, info['commits'], math.ceil(info['commits_frac'] * 100) / 100, info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], str(info['timedelta']), len(info['active_days']), info['place_by_commits']])
+			f.write('<tr><td>%s</td><td>%d</td><td>%.2f%%</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%d</td><td>%d</td></tr>' % (author, info['commits'], info['commits_frac'], info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], info['timedelta'], len(info['active_days']), info['place_by_commits']))
+			#author_list_obj['rows'].append([author, info['commits'], math.ceil(info['commits_frac'] * 100) / 100, info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], str(info['timedelta']), len(info['active_days']), info['place_by_commits']])
+		f.write('</tbody></table>')
 
-		author_array['author_list']=author_list_obj;
+		#author_array['author_list']=author_list_obj
 
 		f.write(html_header(2, 'Cumulated Added Lines of Code per Author'))
 
@@ -1043,11 +1189,14 @@ class HTMLReportCreator(ReportCreator):
 		# Don't rely on getAuthors to give the same order each
 		# time. Be robust and keep the list in a variable.
 		commits_by_authors = {} # cumulated added lines by
+		author_commits = []
 
 		self.authors_to_plot = data.getAuthors(conf['max_authors'])
 		for author in self.authors_to_plot:
 			lines_by_authors[author] = 0
 			commits_by_authors[author] = 0
+			author_commits.append({'name':author, 'commits':sorted(data.authors[author]['stamp'])})
+		#print data.authors
 		for stamp in sorted(data.changes_by_date_by_author.keys()):
 			fgl.write('%d' % stamp)
 			fgc.write('%d' % stamp)
@@ -1061,13 +1210,13 @@ class HTMLReportCreator(ReportCreator):
 			fgc.write('\n')
 		fgl.close()
 		fgc.close()
-		#author_array['lines_by_authors']= lines_by_authors;
-		#author_array['commits_by_authors']=commits_by_authors;
+		#author_array['lines_by_authors']= lines_by_authors
+		author_array['commits_by_authors']=author_commits
 
 		# Authors :: Author of Month
 		f.write(html_header(2, 'Author of Month'))
 		author_of_month_obj = {'divid':'author-of-month', 'title':'Author of Month', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":25}
-		self.createTable(f, author_of_month_obj['divid'], 'table');
+		self.createTable(f, author_of_month_obj['divid'], 'table')
 
 		for column in ("Month", "Name of the Author", "Commits", "%", "Total commits", "Top 5 authors", "# Authors") :
 			author_of_month_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
@@ -1077,15 +1226,15 @@ class HTMLReportCreator(ReportCreator):
 			authors.reverse()
 			commits = data.author_of_month[yymm][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			next = next.replace("'", "");
-			author = authors[0].replace("'", "");
+			next = next.replace("'", "")
+			author = authors[0].replace("'", "")
 			author_of_month_obj['rows'].append([yymm, author, commits, self.calculatePercentage(commits, data.commits_by_month[yymm]), data.commits_by_month[yymm], next, len(authors)])
 		author_array['author_of_month'] = author_of_month_obj
 
 		# Authors :: Author of Year
 		f.write(html_header(2, 'Author of Year'))
 		author_of_year_obj = {'divid':'author-of-year', 'title':'Author of Year', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":10}
-		self.createTable(f, author_of_year_obj['divid'], 'table');
+		self.createTable(f, author_of_year_obj['divid'], 'table')
 
 		for column in ("Year", "Author", "Commits", "%", "Total commits", "Next top 5", "Number of Authors") :
 			author_of_year_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
@@ -1095,8 +1244,8 @@ class HTMLReportCreator(ReportCreator):
 			authors.reverse()
 			commits = data.author_of_year[yy][authors[0]]
 			next = ', '.join(authors[1:conf['authors_top']+1])
-			next = next.replace("'", "");
-			author = authors[0].replace("'", "");
+			next = next.replace("'", "")
+			author = authors[0].replace("'", "")
 			author_of_year_obj['rows'].append([yy, author, commits, self.calculatePercentage(commits, data.commits_by_year[yy]), data.commits_by_year[yy], next, len(authors)])
 		author_array['author_of_year'] = author_of_year_obj
 		self.printDataDiv(f, 'author', author_array)
@@ -1121,12 +1270,16 @@ class HTMLReportCreator(ReportCreator):
 
 		lines_array = {"total_lines":data.getTotalLOC()}
 
-		line_count_obj = {'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':[]}
-		f.write(html_header(2, 'Lines of Code'))
+		divid = 'line-count-by-date'
+		line_count_obj = {'divid':divid, 'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'6 months'}, 'dateformat':'%b-%Y'}
+		#f.write(html_header(2, 'Lines of Code'))
+		self.createPlotDiv(f, divid, "div")
 
 		fg = open(path + '/lines_of_code.dat', 'w')
-		for stamp in sorted(data.changes_by_date.keys()):
-			line_count_obj['line1'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']])
+		sorted_keys = sorted(data.changes_by_date.keys())
+		line_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
+		for stamp in sorted_keys:
+			line_count_obj['line1']['value'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']])
 			fg.write('%s %d\n' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']))
 		fg.close()
 		lines_array['lines_count'] = line_count_obj
@@ -1140,7 +1293,7 @@ class HTMLReportCreator(ReportCreator):
 		tags_array = {}
 		f = open(path + '/tags.html', 'w')
 		self.printHeader(f, 'Tags')
-		#self.createTable(f, tags_obj['divid'], 'table');
+		#self.createTable(f, tags_obj['divid'], 'table')
 		tags_array['total_tags'] = len(data.tags)
 		try:
 			tags_array['average_commit_per_tag'] = 0
@@ -1155,7 +1308,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('</dl>')
 
 		tags_obj = {'divid':'tags-table', 'title':'Tags', 'type':'table-dom', 'horizontal':0, 'column_headers':[None, None, None, None], "sort_index":1, "sort_order":"desc", "show_count":10}
-		f.write('<table id=tags-table cellpadding=0 cellspacing=0 class="table table-bordered display">')
+		f.write('<table id=tags-table cellpadding=0 cellspacing=0 class="table dom-table table-bordered display">')
 		f.write('<thead><tr><th>Name</th><th>Date</th><th>Commits</th><th>Authors</th></tr></thead><tbody>')
 		# sort the tags by date desc
 		tags_sorted_by_date_desc = map(lambda el : el[1], reversed(sorted(map(lambda el : (el[1]['date'], el[0]), data.tags.items()))))
@@ -1191,14 +1344,18 @@ class HTMLReportCreator(ReportCreator):
 		f.write('</dl>\n')
 
 		# Files :: File count by date
-		file_count_obj = {'title':'File Count by Date', 'type':'line', 'horizontal':0, 'line1':[]}
-		f.write(html_header(2, 'File count by date'))
+		divid = 'file-count-by-date'
+		file_count_obj = {'divid':divid, 'title':'File Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'files', 'value':[], 'min':"", 'interval':'6 months'}, 'dateformat':'%b-%Y'}
+		#f.write(html_header(2, 'File count by date'))
+		self.createPlotDiv(f, divid, "div")
 		# use set to get rid of duplicate/unnecessary entries
 		files_by_date = set()
 		curfiles = 0
-		for stamp in sorted(data.files_by_stamp.keys()):
+		sorted_keys = sorted(data.files_by_stamp.keys())
+		file_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
+		for stamp in sorted_keys:
 			if (curfiles != data.files_by_stamp[stamp]):
-				file_count_obj['line1'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]])
+				file_count_obj['line1']['value'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]])
 				files_by_date.add('%s %d' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]))
 			curfiles = data.files_by_stamp[stamp]
 
@@ -1212,7 +1369,7 @@ class HTMLReportCreator(ReportCreator):
 		# Files :: Extensions
 		f.write(html_header(2, 'Extensions'))
 		file_extn_obj = {'divid':'file-extn', 'title':'File Extensions', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":10}
-		self.createTable(f, file_extn_obj['divid'], 'table');
+		self.createTable(f, file_extn_obj['divid'], 'table')
 		for column in ("Extension", "Files", "% of files", "lines", "% lines", "lines/file") :
 			file_extn_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
 		for ext in sorted(data.extensions.keys()):
@@ -1222,7 +1379,7 @@ class HTMLReportCreator(ReportCreator):
 				loc_percentage = (100.0 * lines) / data.getTotalLOC()
 			except ZeroDivisionError:
 				loc_percentage = 0
-			file_extn_obj['rows'].append([ext, files, math.ceil((100.0 * files)/data.getTotalFiles() * 100) / 100, lines, math.ceil(loc_percentage * 100) / 100, lines/files]);
+			file_extn_obj['rows'].append([ext, files, math.ceil((100.0 * files)/data.getTotalFiles() * 100) / 100, lines, math.ceil(loc_percentage * 100) / 100, lines/files])
 		files_array['total_files'] = data.getTotalFiles()
 		files_array['total_lines'] = data.getTotalLOC()
 		files_array['average_file_size'] = average_file_size
@@ -1247,13 +1404,16 @@ class HTMLReportCreator(ReportCreator):
 
 		heading = controller
 		if (controller == 'Index'):
-			heading = "Git-Awsum-Stats - "+ projectname;
+			heading = "Git-Awsum-Stats"
+		heading = ""
 		f.write(
 """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" ng-app>
 <head>
 	<title>Git-Awsum-Stats - %s</title>
+	<link href='http://fonts.googleapis.com/css?family=Rosario' rel='stylesheet' type='text/css'>
+	<link href='http://fonts.googleapis.com/css?family=Josefin+Sans:100' rel='stylesheet' type='text/css'>
 	%s
 	<meta name="generator" content="GitAwesomeStats %s" />
 </head>
@@ -1280,6 +1440,9 @@ class HTMLReportCreator(ReportCreator):
 	<script src="http://code.jquery.com/jquery-latest.min.js" type="text/javascript"></script>
 	<script src="http://code.angularjs.org/1.2.0rc1/angular.min.js"></script>
 	<script type='text/javascript' src='assets/js/table-graph-helper.js'></script>
+	<script type="text/javascript" src="assets/js/bootstrap-carousel.js"></script>
+	<script type="text/javascript" src="assets/js/bootstrap-transition.js"></script>
+	<script type="text/javascript" src="assets/js/bootstrap-modal.js"></script>
 	<script type="text/javascript" src="assets/js/jquery.jqplot.min.js" ></script>
 	<script type="text/javascript" src="assets/js/jqplot.barRenderer.min.js"></script>
 	<script type="text/javascript" src="assets/js/jqplot.pieRenderer.min.js"></script>
@@ -1302,17 +1465,17 @@ class HTMLReportCreator(ReportCreator):
 
 	def printNav(self, f):
 		f.write("""
-		<ul id="main-nav" class='well inline unstyled main-nav text-center'>
-			<li><a href="index.html">General</a></li>
-			<li><a href="activity.html">Activity</a></li>
-			<li><a href="authors.html">Authors</a></li>
-			<li><a href="files.html">Files</a></li>
-			<li><a href="lines.html">Lines</a></li>
-			<li><a href="tags.html">Tags</a></li>
+		<ul id="main-nav" class='inline unstyled main-nav text-center'>
+			<li class=well><a href="index.html">General</a></li>
+			<li class=well><a href="activity.html">Activity</a></li>
+			<li class=well><a href="authors.html">Authors</a></li>
+			<li class=well><a href="files.html">Files</a></li>
+			<li class=well><a href="lines.html">Lines</a></li>
+			<li class=well><a href="tags.html">Tags</a></li>
 		</ul>
 """)
 
-	def createDiv(self, f, divid, tag):
+	def createPlotDiv(self, f, divid, tag):
 		f.write("""
 		<div class='plot' id=%s></div>
 """ % (divid))
@@ -1370,10 +1533,10 @@ class GitStats:
 
 		try:
 			os.makedirs(outputpath)
-			os.makedirs(outputpath + '/assets');
-			os.makedirs(outputpath + '/assets/js');
-			os.makedirs(outputpath + '/assets/css');
-			os.makedirs(outputpath + '/assets/images');
+			os.makedirs(outputpath + '/assets')
+			os.makedirs(outputpath + '/assets/js')
+			os.makedirs(outputpath + '/assets/css')
+			os.makedirs(outputpath + '/assets/images')
 		except OSError:
 			pass
 		if not os.path.isdir(outputpath):
