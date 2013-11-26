@@ -1318,6 +1318,16 @@ class HTMLReportCreator(ReportCreator):
 
 		divid = 'line-count-by-date'
 		dateformat = "%Y-%m-%d"
+		age = data.getLastCommitDate() - data.getFirstCommitDate()
+		if (age > datetime.timedelta(5*365)):
+			dateformat = '%Y';
+		elif (age > datetime.timedelta(365)):
+			dateformat = '%Y-%m';
+		elif (age > datetime.timedelta(90)):
+			dateformat = '%Y-%m';
+		else:
+			dateformat = '%Y-%m-%d';
+
 		line_count_obj = {'divid':divid, 'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'3 months'}, 'dateformat':dateformat}
 		#f.write(html_header(2, 'Lines of Code'))
 		self.createPlotDiv(f, divid, "div")
