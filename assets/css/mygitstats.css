@@ -58,6 +58,9 @@ h2 {
 	width:auto;
 }
 
+.heat-table {
+	width:100%;
+}
 .heat-table tr {
 	height:auto;
 }
@@ -67,15 +70,23 @@ h2 {
 	text-align:center;
 	border-right:1px solid #ddd;
 }
+.heat-table thead tr {
+	height:10px;
+}
 
 .heat-table tr td.data {
 	color:#ddd;
+	cursor:pointer;
 }
-h2.heat-table-heading {
+.heat-table-heading {
 	text-align:center;
 	color:#666;
 	font-size:1.6em;
 	font-weight:normal;
+}
+h3.heat-table-heading {
+	font-size:1.1em;
+	height:40px;
 }
 .ipad-bg {
 	background-image:url('../images/ipad-white.png');
@@ -130,13 +141,15 @@ h2.heat-table-heading {
 .dom-table {
 	display:none;
 }
-
+.dataTables_wrapper {
+	min-height:300px;
+}
 .world-map {
 	width:100%;
 	height:500px;
-	background-image:url('../images/world-map1.jpg');
 	background-image:url('../images/world-map2.jpg');
 	background-image:url('../images/world-map.jpg');
+	background-image:url('../images/world-map1.jpg');
 	background-size:100% 100%;
 	background-repeat:no-repeat;
 }

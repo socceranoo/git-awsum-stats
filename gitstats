@@ -938,10 +938,12 @@ class HTMLReportCreator(ReportCreator):
 		divid = 'hour-of-week'
 		f.write('\t\t<h2 class="text-center heat-table-heading">Hour of Week</h2>')
 		f.write('<table class="table plot heat-table">')
+		f.write('<thead>')
 		f.write('<tr><th>Day</th>')
 		for hour in range(0, 24):
 			f.write('<th>%d</th>' % (hour))
 		f.write('</tr>')
+		f.write('</thead><tbody>')
 		for weekday in range(0, 7):
 			f.write('<tr><th>%s</th>' % (WEEKDAYS[weekday]))
 			for hour in range(0, 24):
@@ -957,70 +959,26 @@ class HTMLReportCreator(ReportCreator):
 				else:
 					f.write('<td style="background-color:#eee">-</td>')
 			f.write('</tr>')
-		f.write('</table>')
+		f.write('</tbody></table>')
 
 		# Month of Year
 		divid = 'month-of-year'
 		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
-		#f.write(html_header(2, 'Month of Year'))
 		self.createPlotDiv(f, divid, "div")
 		fp = open (path + '/month_of_year.dat', 'w')
-		f.write("""
-			<h2 class="text-center heat-table-heading">Commits by Month</h2>
-			<div class=row>
-		""")
 		for mm in range(1, 13):
 			commits = 0
 			if mm in data.activity_by_month_of_year:
 				commits = data.activity_by_month_of_year[mm]
-			index = 0 if(mm > 6) else 0
-			month_of_year_obj['data']['value'][index-1].append([MONTHS[mm-1], commits])
+			#index = 0 if(mm > 6) else 0
+			#month_of_year_obj['data']['value'][index-1].append([MONTHS[mm-1], commits])
 			month_of_year_obj['xaxis']['value'].append(MONTHS[mm-1])
 			month_of_year_obj['yaxis']['value'].append(commits)
 			month_of_year_obj['y2axis']['value'].append(((100.0 * commits) / data.getTotalCommits()))
 			fp.write('%d %d\n' % (mm, commits))
-			f.write("""
-				<div class="span2 text-center well month">
-					<h3>%s</h3>
-					<h4>%d</h4>
-					<h5>%.1f</h5>
-				</div>
-			""" % (MONTHS[mm-1], commits, 100.0 * commits / data.getTotalCommits()))
 		fp.close()
-		f.write("</div>")
+		#f.write("</div>")
 		activities_array['month_of_year'] = month_of_year_obj
-
-		# Commits by year/month
-		f.write('\t\t<h2 class="text-center heat-table-heading">Year/Month</h2>')
-		f.write('<table class="table plot heat-table">')
-		f.write('<tr><th>Year</th>')
-		for month in range(1, 13):
-			f.write('<th>%s</th>' % (MONTHS[month-1]))
-		f.write('</tr>')
-		yy_range = sorted(data.commits_by_year.keys())
-		max_value = sorted(data.commits_by_month.values())[-1]
-		for yy in range(yy_range[0], yy_range[-1]+1):
-			f.write('<tr><th>%d</th>' % (yy))
-			for mm in range(1, 13):
-				mm_str = "0"+str(mm) if(mm < 10) else str(mm)
-				yymm = str(yy)+"-"+mm_str
-				commits = data.commits_by_month.get(yymm,0)
-				if commits != 0:
-					f.write('<td class=data ')
-					r = 160 - int((float(commits) / max_value) * 160)
-					f.write(' style="background-color: rgb(204, %d, 0)"' % r)
-					f.write('>%d</td>' % commits)
-				else:
-					f.write('<td style="background-color:#eee">-</td>')
-				#data.lines_added_by_month.get(yymm,0)
-				#data.lines_removed_by_month.get(yymm,0)
-			f.write('</tr>')
-		f.write('</table>')
-			
-		fg = open(path + '/commits_by_year_month.dat', 'w')
-		for yymm in sorted(data.commits_by_month.keys()):
-			fg.write('%s %s\n' % (yymm, data.commits_by_month[yymm]))
-		fg.close()
 
 		# Commits by year
 		divid = 'year-commits'
@@ -1152,10 +1110,114 @@ class HTMLReportCreator(ReportCreator):
 		f = open(path + '/authors.html', 'w')
 		self.printHeader(f, 'Authors')
 
+
+		f.write(html_header(2, 'Cumulated Added Lines of Code per Author'))
+
+
+		fgl = open(path + '/lines_of_code_by_author.dat', 'w')
+		fgc = open(path + '/commits_by_author.dat', 'w')
+
+		lines_by_authors = {} # cumulated added lines by
+		# author. to save memory,
+		# changes_by_date_by_author[stamp][author] is defined
+		# only at points where author commits.
+		# lines_by_authors allows us to generate all the
+		# points in the .dat file.
+
+		# Don't rely on getAuthors to give the same order each
+		# time. Be robust and keep the list in a variable.
+		commits_by_authors = {}
+		self.authors_to_plot = data.getAuthors(10)
+		for author in self.authors_to_plot:
+			lines_by_authors[author] = 0
+			commits_by_authors[author] = 0
+		for stamp in sorted(data.changes_by_date_by_author.keys()):
+			fgl.write('%d' % stamp)
+			fgc.write('%d' % stamp)
+			for author in self.authors_to_plot:
+				if author in data.changes_by_date_by_author[stamp].keys():
+					lines_by_authors[author] = data.changes_by_date_by_author[stamp][author]['lines_added']
+					commits_by_authors[author] = data.changes_by_date_by_author[stamp][author]['commits']
+				fgl.write(' %d' % lines_by_authors[author])
+				fgc.write(' %d' % commits_by_authors[author])
+			fgl.write('\n')
+			fgc.write('\n')
+		fgl.close()
+		fgc.close()
+		f.write('<h2 class="text-center heat-table-heading">Top Authors</h2>')
+		f.write('<div class=row>')
+		self.authors_to_plot = data.getAuthors(10)
+		#self.authors_to_plot = data.getAuthors(conf['max_authors'])
+		author_index = 0
+		author_commits = {'type':'lineseries', 'author_arr':[]}
+		#author_lines = {'type':'lineseries', 'author_arr':[]}
+		age = data.getLastCommitDate() - data.getFirstCommitDate()
+		if (age > datetime.timedelta(5*365)):
+			dateformat = '%Y';
+		elif (age > datetime.timedelta(365)):
+			dateformat = '%Y-%m';
+		elif (age > datetime.timedelta(90)):
+			dateformat = '%Y-%m';
+		else:
+			dateformat = '%Y-%m-%d';
+		max_commits_day = 0
+		for author in self.authors_to_plot:
+			lines_by_authors[author] = 0
+			commits_by_authors[author] = 0
+			divid = "author-plot-"+str(author_index)
+			lineid = "line-plot-"+str(author_index)
+			commithash = {}
+			#linehash = {}
+			author_obj = {'divid':divid, 'title':author, 'type':'line', 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
+			#line_obj = {'divid':lineid, 'title':author, 'type':'line', 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
+			print len(sorted(data.authors[author]['stamp']));
+			count = 0
+			for stamp in sorted(data.authors[author]['stamp']):
+				lines_per_stamp = 0
+				#if stamp in data.changes_by_date_by_author.keys():
+				#	lines_per_stamp = data.changes_by_date_by_author[stamp][author]['lines_added']
+				#	count += 1	
+				cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat)
+				if cur_date not in commithash:
+					commithash[cur_date] = 1
+					#linehash[cur_date] = lines_per_stamp
+				else:
+					commithash[cur_date] += 1
+					#linehash[cur_date] += lines_per_stamp
+			#print "TOTAl ", count 
+				
+			sorted_keys = sorted(commithash.keys())
+			#sorted_keys2 = sorted(linehash.keys())
+			author_total_commits = 0
+			#author_total_lines = 0
+			max_commits_author = sorted(commithash.values())[-1]
+			if (max_commits_day < max_commits_author):
+				max_commits_day = max_commits_author
+			for cur_date in sorted_keys:
+				author_obj['line1']['value'].append([cur_date, commithash[cur_date]])
+				#line_obj['line1']['value'].append([cur_date, linehash[cur_date]])
+				author_total_commits += commithash[cur_date];
+				#author_total_lines += linehash[cur_date];
+			author_obj['line1']['min']= sorted_keys[0]
+			#line_obj['line1']['min']= sorted_keys[0]
+			author_obj['title'] += " ("+str(author_total_commits)+" commits)"
+			#line_obj['title'] += " ("+str(author_total_lines)+" lines)"
+			if (len(sorted_keys) > 1):
+				f.write('<div class=span6>')
+				self.createPlotDiv(f, divid, "div")
+				#self.createPlotDiv(f, lineid, "div")
+				author_commits['author_arr'].append(author_obj)
+				#author_lines['author_arr'].append(line_obj)
+				f.write('</div>')
+			author_index += 1
+		f.write('</div>')
+		#author_array['lines_by_authors']= lines_by_authors
+		author_array['commits_by_authors']=author_commits
+		#author_array['lines_by_authors']=author_lines
+
 		# Authors :: List of authors
 		f.write('<h2 class="text-center heat-table-heading">List of Authors</h2>')
 		author_list_obj = {'divid':'author-list', 'title':'List of Authors', 'type':'table-dom', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":10}
-
 		f.write('<table id=author-list cellpadding=0 cellspacing=0 class="table table-bordered dom-table display">')
 		f.write('<thead><tr>')
 		for column in ("Author", "Commits", "%", "lines-added", "lines-removed", "First commit", "Last commit", "Age", "Active days", "Rank") :
@@ -1170,66 +1232,50 @@ class HTMLReportCreator(ReportCreator):
 			#author_list_obj['rows'].append([author, info['commits'], math.ceil(info['commits_frac'] * 100) / 100, info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], str(info['timedelta']), len(info['active_days']), info['place_by_commits']])
 		f.write('</tbody></table>')
 
-		#author_array['author_list']=author_list_obj
+		author_array['author_list']=author_list_obj
 
-		f.write(html_header(2, 'Cumulated Added Lines of Code per Author'))
-
-		f.write(html_header(2, 'Commits per Author'))
-
-		fgl = open(path + '/lines_of_code_by_author.dat', 'w')
-		fgc = open(path + '/commits_by_author.dat', 'w')
-
-		lines_by_authors = {} # cumulated added lines by
-		# author. to save memory,
-		# changes_by_date_by_author[stamp][author] is defined
-		# only at points where author commits.
-		# lines_by_authors allows us to generate all the
-		# points in the .dat file.
-
-		# Don't rely on getAuthors to give the same order each
-		# time. Be robust and keep the list in a variable.
-		commits_by_authors = {} # cumulated added lines by
-		author_commits = []
-
-		self.authors_to_plot = data.getAuthors(conf['max_authors'])
-		for author in self.authors_to_plot:
-			lines_by_authors[author] = 0
-			commits_by_authors[author] = 0
-			author_commits.append({'name':author, 'commits':sorted(data.authors[author]['stamp'])})
-		#print data.authors
-		for stamp in sorted(data.changes_by_date_by_author.keys()):
-			fgl.write('%d' % stamp)
-			fgc.write('%d' % stamp)
-			for author in self.authors_to_plot:
-				if author in data.changes_by_date_by_author[stamp].keys():
-					lines_by_authors[author] = data.changes_by_date_by_author[stamp][author]['lines_added']
-					commits_by_authors[author] = data.changes_by_date_by_author[stamp][author]['commits']
-				fgl.write(' %d' % lines_by_authors[author])
-				fgc.write(' %d' % commits_by_authors[author])
-			fgl.write('\n')
-			fgc.write('\n')
-		fgl.close()
-		fgc.close()
-		#author_array['lines_by_authors']= lines_by_authors
-		author_array['commits_by_authors']=author_commits
-
-		# Authors :: Author of Month
-		f.write(html_header(2, 'Author of Month'))
-		author_of_month_obj = {'divid':'author-of-month', 'title':'Author of Month', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":25}
-		self.createTable(f, author_of_month_obj['divid'], 'table')
-
-		for column in ("Month", "Name of the Author", "Commits", "%", "Total commits", "Top 5 authors", "# Authors") :
-			author_of_month_obj['column_headers'].append({'sTitle':column, 'sClass':'center'})
-		for yymm in reversed(sorted(data.author_of_month.keys())):
-			authordict = data.author_of_month[yymm]
-			authors = getkeyssortedbyvalues(authordict)
-			authors.reverse()
-			commits = data.author_of_month[yymm][authors[0]]
-			next = ', '.join(authors[1:conf['authors_top']+1])
-			next = next.replace("'", "")
-			author = authors[0].replace("'", "")
-			author_of_month_obj['rows'].append([yymm, author, commits, self.calculatePercentage(commits, data.commits_by_month[yymm]), data.commits_by_month[yymm], next, len(authors)])
-		author_array['author_of_month'] = author_of_month_obj
+		# Commits by Author year/month
+		f.write('\t\t<h2 class="text-center heat-table-heading">Author of the Month</h2>')
+		f.write('<table class="table plot heat-table">')
+		f.write('<thead>')
+		f.write('<tr><th>Year</th>')
+		for month in range(1, 13):
+			f.write('<th>%s</th>' % (MONTHS[month-1]))
+		f.write('</tr>')
+		f.write('</thead><tbody>')
+		yy_range = sorted(data.commits_by_year.keys())
+		max_value = sorted(data.commits_by_month.values())[-1]
+		for yy in range(yy_range[0], yy_range[-1]+1):
+			f.write('<tr><th>%d</th>' % (yy))
+			for mm in range(1, 13):
+				mm_str = "0"+str(mm) if(mm < 10) else str(mm)
+				yymm = str(yy)+"-"+mm_str
+				commits = data.commits_by_month.get(yymm,0)
+				if commits != 0:
+					authordict = data.author_of_month[yymm]
+					authors = getkeyssortedbyvalues(authordict)
+					authors.reverse()
+					authorcommits = data.author_of_month[yymm][authors[0]]
+					next = ', '.join(authors[1:conf['authors_top']+1])
+					next = next.replace("'", "")
+					author = authors[0].replace("'", "")
+					month_data = {'Year-month':yymm, 'Top Author':author+" ("+str(authorcommits)+" of "+str(data.commits_by_month[yymm])+" commits)", 'Next 5 Authors':next, 'Total authors':len(authors)}
+					r = 160 - int((float(commits) / max_value) * 160)
+					trow = "<td class=data ng-mouseover='showDetails($event);' ng-mouseleave='hideDetails();' data-details='%s' style='background-color: rgb(204, %d, 0);' >%s(%d/%d)</td>" % (json.dumps(month_data), r, author, authorcommits, commits)
+					f.write(trow)
+					#f.write("<td class=data ng-mouseover='showDetails($event);' ng-mouseleave='hideDetails();' data-details='%s' style='background-color: rgb(204, %d, 0)'>%s(%d/%d)</td>" % (json.dumps(month_data), r, author, authorcommits, commits))
+				else:
+					f.write('<td style="background-color:#eee" >-</td>')
+				#data.lines_added_by_month.get(yymm,0)
+				#data.lines_removed_by_month.get(yymm,0)
+			f.write('</tr>')
+		f.write('</tbody></table>')
+		f.write('\t\t<h3 class="text-center heat-table-heading" ng-bind="detail"></h3>')
+			
+		fg = open(path + '/commits_by_year_month.dat', 'w')
+		for yymm in sorted(data.commits_by_month.keys()):
+			fg.write('%s %s\n' % (yymm, data.commits_by_month[yymm]))
+		fg.close()
 
 		# Authors :: Author of Year
 		f.write(html_header(2, 'Author of Year'))
@@ -1271,16 +1317,23 @@ class HTMLReportCreator(ReportCreator):
 		lines_array = {"total_lines":data.getTotalLOC()}
 
 		divid = 'line-count-by-date'
-		line_count_obj = {'divid':divid, 'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'6 months'}, 'dateformat':'%b-%Y'}
+		dateformat = "%Y-%m-%d"
+		line_count_obj = {'divid':divid, 'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'3 months'}, 'dateformat':dateformat}
 		#f.write(html_header(2, 'Lines of Code'))
 		self.createPlotDiv(f, divid, "div")
 
 		fg = open(path + '/lines_of_code.dat', 'w')
 		sorted_keys = sorted(data.changes_by_date.keys())
 		line_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
-		for stamp in sorted_keys:
-			line_count_obj['line1']['value'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']])
+		line_hash = {}
+		for stamp in data.changes_by_date.keys():
+			cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat);
+			line_hash[cur_date] = data.changes_by_date[stamp]['lines']
 			fg.write('%s %d\n' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']))
+		sorted_keys = sorted(line_hash.keys())
+		line_count_obj['line1']['min'] = sorted_keys[0]
+		for cur_date in sorted_keys:
+			line_count_obj['line1']['value'].append([cur_date, line_hash[cur_date]])
 		fg.close()
 		lines_array['lines_count'] = line_count_obj
 		self.printDataDiv(f, 'lines', lines_array)
@@ -1344,20 +1397,36 @@ class HTMLReportCreator(ReportCreator):
 		f.write('</dl>\n')
 
 		# Files :: File count by date
+		dateformat = '%Y-%m-%d'
+		age = data.getLastCommitDate() - data.getFirstCommitDate()
+		if (age > datetime.timedelta(5*365)):
+			dateformat = '%Y';
+		elif (age > datetime.timedelta(365)):
+			dateformat = '%Y-%m';
+		elif (age > datetime.timedelta(90)):
+			dateformat = '%Y-%m';
+		else:
+			dateformat = '%Y-%m-%d';
+
 		divid = 'file-count-by-date'
-		file_count_obj = {'divid':divid, 'title':'File Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'files', 'value':[], 'min':"", 'interval':'6 months'}, 'dateformat':'%b-%Y'}
+		file_count_obj = {'divid':divid, 'title':'File Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'files', 'value':[], 'min':"", 'interval':'6 months'}, 'dateformat':dateformat}
 		#f.write(html_header(2, 'File count by date'))
 		self.createPlotDiv(f, divid, "div")
 		# use set to get rid of duplicate/unnecessary entries
 		files_by_date = set()
 		curfiles = 0
-		sorted_keys = sorted(data.files_by_stamp.keys())
-		file_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
-		for stamp in sorted_keys:
+		file_hash = {}
+		for stamp in sorted(data.files_by_stamp.keys()):
+			cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat)
 			if (curfiles != data.files_by_stamp[stamp]):
-				file_count_obj['line1']['value'].append([datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]])
+				file_hash[cur_date] = data.files_by_stamp[stamp]
 				files_by_date.add('%s %d' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]))
 			curfiles = data.files_by_stamp[stamp]
+
+		sorted_keys = sorted(file_hash.keys())
+		file_count_obj['line1']['min'] = sorted_keys[0]
+		for cur_date in sorted(file_hash.keys()):
+			file_count_obj['line1']['value'].append([cur_date, file_hash[cur_date]])
 
 		fg = open(path + '/files_by_date.dat', 'w')
 		for line in sorted(list(files_by_date)):
@@ -1461,7 +1530,7 @@ class HTMLReportCreator(ReportCreator):
 	%s
 </body>
 </html>
-""" % (jsfiles))
+		""" % (jsfiles))
 
 	def printNav(self, f):
 		f.write("""
@@ -1473,23 +1542,23 @@ class HTMLReportCreator(ReportCreator):
 			<li class=well><a href="lines.html">Lines</a></li>
 			<li class=well><a href="tags.html">Tags</a></li>
 		</ul>
-""")
+		""")
 
 	def createPlotDiv(self, f, divid, tag):
 		f.write("""
 		<div class='plot' id=%s></div>
-""" % (divid))
+		""" % (divid))
 
 	def createTable(self, f, divid, tag):
 		f.write("""
 		<%s cellpadding=0 cellspacing=0 class='table table-bordered display' id=%s></%s>
-""" % (tag, divid, tag))
+		""" % (tag, divid, tag))
 
 	def printDataDiv(self, f, div_id, json_array):
 		json_data = json.dumps(json_array)
 		f.write("""
 		<div style='display:none' id=%s data-json='%s'></div>
-""" % (div_id, json_data))
+		""" % (div_id, json_data))
 		
 def usage():
 	print """

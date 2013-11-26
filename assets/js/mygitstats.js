@@ -19,9 +19,18 @@ function Activity($scope) {
 
 function Authors($scope) {
 	//alert("Author");
+	$scope.detail = " ";
 	var data = $("#author").data('json');
 	$(".main-nav").children(":eq(2)").addClass(highlight_class);
 	display(data);
+	$scope.showDetails = function ($event){
+		var elem = $event.target;
+		var details = $(elem).data('details');
+		$scope.detail = JSON.stringify(details);
+	};
+	$scope.hideDetails = function (){
+		$scope.detail = " ";
+	};
 }
 
 function Files($scope) {
@@ -60,6 +69,10 @@ function display(data) {
 			init_line_graph(data[keys[i]]);
 		} else if (data[keys[i]].type && data[keys[i]].type == 'donut') {
 			init_pie_donut_chart(data[keys[i]]);
+		} else if (data[keys[i]].type && data[keys[i]].type == 'lineseries') {
+			for (var j = 0; j < data[keys[i]].author_arr.length; j++) {
+				init_line_graph(data[keys[i]].author_arr[j]);
+			}
 		} else if (data[keys[i]].type && data[keys[i]].type == 'pie') {
 			init_pie_donut_chart(data[keys[i]]);
 		}

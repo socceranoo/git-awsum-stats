@@ -164,11 +164,13 @@ function init_line_graph (div_object) {
 	var max = Math.max.apply(Math, div_object.line1.value);
 	var step = max/5;
 	var color = color_subset(dark_flat_colors, 1)[0];
+	var max_y = step * (5 + 1);
 	var plot2 = $.jqplot(div_object.divid, [div_object.line1.value], {
 		title: div_object.title,
 		animate:true,
 		grid: {
-			gridLineColor:"#eee"
+			gridLineColor:"#ccc",
+			background:"#FFFAE8"
 		},
 		axesDefaults: {
 			labelRenderer: $.jqplot.CanvasAxisLabelRenderer,
@@ -185,13 +187,13 @@ function init_line_graph (div_object) {
 			rendererOptions: {
 				smooth: true
 			},
-			fill:false
+			fill:div_object.fill
 		},
 		series:[ 
 			{
 				// Don't show a line, just show markers.  Make the markers 7 pixels with an 'x' style
 				//showLine:false,
-				markerOptions: { size: 7, style:"x" },
+				markerOptions: { size: 7, style:"." },
 				label:div_object.line1.label,
 				color:color
 			}
@@ -208,13 +210,15 @@ function init_line_graph (div_object) {
 					//formatString:'%b-%Y',
 					angle: -25
 				},
-				min:div_object.line1.min,
-				tickInterval:div_object.line1.interval
+				//tickInterval:div_object.line1.interval,
+				min:div_object.line1.min
 			},
 			yaxis: {
 				label: div_object.line1.label,
 				min:0,
-				labelRenderer: $.jqplot.CanvasAxisLabelRenderer
+				labelRenderer: $.jqplot.CanvasAxisLabelRenderer,
+				tickOptions: {
+				}
 			},
 		}
 	});
@@ -226,6 +230,8 @@ function domdatatable(table_obj) {
 		return;
 	$('#'+table_obj.divid).dataTable(
 		{
+			"fnInitComplete": function(oSettings, json) {
+			},
 			"bPaginate": true, "bLengthChange": true, "bFilter": true, "bSort": true, "bInfo": true, "bAutoWidth": true,"aoColumns": table_obj.column_headers,
 			"iDisplayLength":table_obj.show_count, "aaSorting":[[table_obj.sort_index, table_obj.sort_order]]	
 		}
