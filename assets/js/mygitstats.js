@@ -4,8 +4,14 @@ $(document).ready(function() {
 
 function Index($scope) {
 	//alert("Index");
+	var imgCount = 6;
+	$('#myCarousel').bind('slid',function(){
+		imgCount--;
+		if(imgCount === 0)
+			$('#myCarousel').carousel('pause');
+	});
 	$("#myCarousel").carousel({
-		interval:5000
+		interval:3500,
 	});
 	$(".main-nav").children(":eq(0)").addClass(highlight_class);
 }
@@ -20,13 +26,14 @@ function Activity($scope) {
 function Authors($scope) {
 	//alert("Author");
 	$scope.detail = " ";
+	$scope.year_month = {};
 	var data = $("#author").data('json');
 	$(".main-nav").children(":eq(2)").addClass(highlight_class);
 	display(data);
 	$scope.showDetails = function ($event){
 		var elem = $event.target;
-		var details = $(elem).data('details');
-		$scope.detail = JSON.stringify(details);
+		$scope.year_month = $(elem).data('details');
+		$("#year-month-modal").modal();
 	};
 	$scope.hideDetails = function (){
 		$scope.detail = " ";
@@ -83,6 +90,7 @@ function draw_clock_canvas(div_object) {
 	//alert(JSON.stringify(div_object.data));
 	var limit = div_object.upperlimit;
 	var color_arr = get_random_colors(limit, 0);
+	console.log(color_arr);
 	var b_canvas = document.getElementById(div_object.divid);
 	var w = b_canvas.width;
 	var h = b_canvas.height;

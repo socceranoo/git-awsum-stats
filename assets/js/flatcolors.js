@@ -125,7 +125,10 @@ function get_random_colors(size, option){
 		shuffled[index] = shuffled[i];
 		shuffled[i] = temp;
 	}
-	return shuffled.slice(0, size);
+	if (size > arr.length)
+		return shuffled.concat(shuffled.slice(index)).slice(0, size);
+	else
+		return shuffled.slice(0, size);
 }
 
 (function websafe_colors() {

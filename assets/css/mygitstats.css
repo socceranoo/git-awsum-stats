@@ -73,6 +73,9 @@ h2 {
 .heat-table thead tr {
 	height:10px;
 }
+.heat-table tbody tr {
+	max-height:100px;
+}
 
 .heat-table tr td.data {
 	color:#ddd;

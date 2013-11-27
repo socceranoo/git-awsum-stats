@@ -772,7 +772,7 @@ class HTMLReportCreator(ReportCreator):
 			commits_per_tag = (1.0 * data.getTotalCommits() / len(data.tags))
 		f.write("""
 		<div class=row>
-			<div id=myCarousel class='offset3 span6 text-center carousel slide ipad-bg'>
+			<div id=myCarousel data-wrap=false class='offset3 span6 text-center carousel slide ipad-bg'>
 				<h2 class=heading>%s</h2>
 				<div class="text-center home-stats carousel-inner">
 					<div class="item">
@@ -939,7 +939,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('\t\t<h2 class="text-center heat-table-heading">Hour of Week</h2>')
 		f.write('<table class="table plot heat-table">')
 		f.write('<thead>')
-		f.write('<tr><th>Day</th>')
+		f.write('<tr><th>Day/Hour</th>')
 		for hour in range(0, 24):
 			f.write('<th>%d</th>' % (hour))
 		f.write('</tr>')
@@ -1238,7 +1238,7 @@ class HTMLReportCreator(ReportCreator):
 		f.write('\t\t<h2 class="text-center heat-table-heading">Author of the Month</h2>')
 		f.write('<table class="table plot heat-table">')
 		f.write('<thead>')
-		f.write('<tr><th>Year</th>')
+		f.write('<tr><th>Year/Month</th>')
 		for month in range(1, 13):
 			f.write('<th>%s</th>' % (MONTHS[month-1]))
 		f.write('</tr>')
@@ -1256,12 +1256,14 @@ class HTMLReportCreator(ReportCreator):
 					authors = getkeyssortedbyvalues(authordict)
 					authors.reverse()
 					authorcommits = data.author_of_month[yymm][authors[0]]
-					next = ', '.join(authors[1:conf['authors_top']+1])
-					next = next.replace("'", "")
+					nexttop = ""
+					for k in range(1, min(conf['authors_top']+1, len(authors))):
+						author = authors[k].replace("'", "")
+						nexttop += author+" ("+str(data.author_of_month[yymm][authors[k]])+"), "
 					author = authors[0].replace("'", "")
-					month_data = {'Year-month':yymm, 'Top Author':author+" ("+str(authorcommits)+" of "+str(data.commits_by_month[yymm])+" commits)", 'Next 5 Authors':next, 'Total authors':len(authors)}
+					month_data = {'Year_Month':str(yy)+"-"+MONTHS[mm-1], 'Top Author':author+" ("+str(authorcommits)+" of "+str(data.commits_by_month[yymm])+" commits)", 'Next 5 Authors':nexttop, 'Total authors':len(authors)}
 					r = 160 - int((float(commits) / max_value) * 160)
-					trow = "<td class=data ng-mouseover='showDetails($event);' ng-mouseleave='hideDetails();' data-details='%s' style='background-color: rgb(204, %d, 0);' >%s(%d/%d)</td>" % (json.dumps(month_data), r, author, authorcommits, commits)
+					trow = "<td class=data ng-click='showDetails($event);' ng-mouseleave='hideDetails();' data-details='%s' style='background-color: rgb(204, %d, 0);' >%s</td>" % (json.dumps(month_data), r, author)
 					f.write(trow)
 					#f.write("<td class=data ng-mouseover='showDetails($event);' ng-mouseleave='hideDetails();' data-details='%s' style='background-color: rgb(204, %d, 0)'>%s(%d/%d)</td>" % (json.dumps(month_data), r, author, authorcommits, commits))
 				else:
@@ -1270,6 +1272,19 @@ class HTMLReportCreator(ReportCreator):
 				#data.lines_removed_by_month.get(yymm,0)
 			f.write('</tr>')
 		f.write('</tbody></table>')
+		f.write("""
+			<div class="modal fade hide out small-modal" id=year-month-modal>
+				<div class="modal-header">
+					<a href="#year-month-modal" class=pull-right data-dismiss="modal">x</a>
+					<h2 class=text-center ng-bind="year_month.Year_Month"></h2>
+				</div>
+				<div class=modal-body>
+					<table class="table dataTable table-bordered text-center" ng-repeat="(key, value) in year_month">
+						<tr><td>{{key}}</td><td>{{value}}</td></tr>
+					</table>
+				</div>
+			</div>
+		""")
 		f.write('\t\t<h3 class="text-center heat-table-heading" ng-bind="detail"></h3>')
 			
 		fg = open(path + '/commits_by_year_month.dat', 'w')
