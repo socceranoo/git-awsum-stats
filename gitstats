@@ -15,6 +15,7 @@ import time
 import zlib
 import json
 import math
+import argparse
 
 if sys.version_info < (2, 6):
        print >> sys.stderr, "Python 2.6 or higher is required for gitstats"
@@ -822,18 +823,6 @@ class HTMLReportCreator(ReportCreator):
 		</div>
 		""" % (data.projectname, data.getTotalFiles(), len(data.extensions.keys()), data.getTotalLOC(), data.total_lines_added, data.total_lines_removed, len(data.tags), commits_per_tag, data.getTotalCommits(), data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format), data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors(), len(data.getActiveDays()), data.getCommitDeltaDays(), datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
 
-		#f.write('\t\t<dl>\n')
-		#f.write('\t\t\t<dt>Project name</dt><dd>%s</dd>\n' % (data.projectname))
-		#f.write('\t\t\t<dt>Generated</dt><dd>%s (in %d seconds)</dd>\n' % (datetime.datetime.now().strftime(format), time.time() - data.getStampCreated()))
-		#f.write('\t\t\t<dt>Generator</dt><dd><a href="http://gitstats.sourceforge.net/">GitStats</a> (version %s), %s, %s</dd>\n' % (getversion(), getgitversion(), getgnuplotversion()))
-		#f.write('\t\t\t<dt>Report Period</dt><dd>%s to %s</dd>\n' % (data.getFirstCommitDate().strftime(format), data.getLastCommitDate().strftime(format)))
-		#f.write('\t\t\t<dt>Age</dt><dd>%d days, %d active days (%3.2f%%)</dd>\n' % (data.getCommitDeltaDays(), len(data.getActiveDays()), (100.0 * len(data.getActiveDays()) / data.getCommitDeltaDays())))
-		#f.write('\t\t\t<dt>Total Files</dt><dd>%s</dd>\n' % data.getTotalFiles())
-		#f.write('\t\t\t<dt>Total Lines of Code</dt><dd>%s (%d added, %d removed)</dd>\n' % (data.getTotalLOC(), data.total_lines_added, data.total_lines_removed))
-		#f.write('\t\t\t<dt>Total Commits</dt><dd>%s (average %.1f commits per active day, %.1f per all days)</dd>\n' % (data.getTotalCommits(), float(data.getTotalCommits()) / len(data.getActiveDays()), float(data.getTotalCommits()) / data.getCommitDeltaDays()))
-		#f.write('\t\t\t<dt>Authors</dt><dd>%s (average %.1f commits per author)</dd>\n' % (data.getTotalAuthors(), (1.0 * data.getTotalCommits()) / data.getTotalAuthors()))
-		#f.write('\t\t</dl>\n')
-
 		self.printFooter(f)
 		f.close()
 
@@ -1585,20 +1574,6 @@ class HTMLReportCreator(ReportCreator):
 		<div style='display:none' id=%s data-json='%s'></div>
 		""" % (div_id, json_data))
 		
-def usage():
-	print """
-Usage: gitstats [options] <gitpath..> <outputpath>
-
-Options:
--c key=value     Override configuration value
-
-Default config values:
-%s
-
-Please see the manual page for more details.
-""" % conf
-
-
 class GitStats:
 	def run(self, args_orig):
 		optlist, args = getopt.getopt(args_orig, 'hc:', ["help"])
@@ -1649,12 +1624,15 @@ class GitStats:
 
 		for gitpath in args[0:-1]:
 			print 'Git path: %s' % gitpath
+			if not os.path.isdir(gitpath):
+				print 'FATAL: Output path is not a directory or does not exist'
+				sys.exit(1)
 
 			os.chdir(gitpath)
-
 			print 'Collecting data...'
 			data.collect(gitpath)
 
+		#sys.exit(1)
 		print 'Refining data...'
 		data.saveCache(cachefile)
 		data.refine()
@@ -1674,7 +1652,48 @@ class GitStats:
 			print '   sensible-browser \'%s\'' % os.path.join(outputpath, 'index.html').replace("'", "'\\''")
 			print
 
+def parse_options():
+	parser = argparse.ArgumentParser(description=
+		'Python based implementation for bugspot ' \
+		'for project BugSpies')
+	group = parser.add_mutually_exclusive_group()
+	group.add_argument("--input-dir", "-i",
+				help = "input directory where to run mygitstats",
+				type = str,
+	)
+
+	parser.add_argument("--output-dir", "-o",
+				#default = "/tmp/stats",
+				help = "output directory where the stats to be genrated",
+				type = str,
+	)
+
+	group.add_argument("--add-repo", "-a",
+				help = "add a repo to stats directory",
+				type = str,
+	)
+
+	args = parser.parse_args()
+	return args
+
 if __name__=='__main__':
+	arg_array = []
+	options = parse_options()
+	if not options.output_dir:
+		print "Output directory is a must!!"
+		sys.exit(1)
+
+	if not options.input_dir and not options.add_repo:
+		print "Input directory  or Repo name is a must!!"
+		sys.exit(1)
+
+	if not options.input_dir:
+		arg_array.append(options.add_repo)
+	else:
+		arg_array.append(options.input_dir)
+
+	arg_array.append(options.output_dir)
 	g = GitStats()
-	g.run(sys.argv[1:])
+	#g.run(sys.argv[1:])
+	g.run(arg_array)
 
