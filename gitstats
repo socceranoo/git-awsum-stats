@@ -732,7 +732,6 @@ class HTMLReportCreator(ReportCreator):
 		ReportCreator.create(self, data, path)
 		self.title = data.projectname
 
-		self.copystaticfiles(path)
 		self.indexhtml(data, path)
 		self.activityhtml(data, path)
 		self.authorhtml(data, path)
@@ -740,28 +739,6 @@ class HTMLReportCreator(ReportCreator):
 		self.linehtml(data, path)
 		self.taghtml(data, path)
 
-	def copystaticfiles(self, path) :
-		# copy static files. 
-		src="assets/css"
-		src_files = os.listdir(src)
-		for file_name in src_files:
-			full_file_name = os.path.join(src, file_name)
-			if (os.path.isfile(full_file_name)):
-				shutil.copy(full_file_name, path + '/assets/css/' + file_name)
-
-		src="assets/js"
-		src_files = os.listdir(src)
-		for file_name in src_files:
-			full_file_name = os.path.join(src, file_name)
-			if (os.path.isfile(full_file_name)):
-				shutil.copy(full_file_name, path + '/assets/js/' + file_name)
-
-		src="assets/images"
-		src_files = os.listdir(src)
-		for file_name in src_files:
-			full_file_name = os.path.join(src, file_name)
-			if (os.path.isfile(full_file_name)):
-				shutil.copy(full_file_name, path + '/assets/images/' + file_name)
 
 	def indexhtml(self, data, path):
 		f = open(path + "/index.html", 'w')
@@ -1159,7 +1136,6 @@ class HTMLReportCreator(ReportCreator):
 			#linehash = {}
 			author_obj = {'divid':divid, 'title':author, 'type':'line', 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
 			#line_obj = {'divid':lineid, 'title':author, 'type':'line', 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
-			print len(sorted(data.authors[author]['stamp']));
 			count = 0
 			for stamp in sorted(data.authors[author]['stamp']):
 				lines_per_stamp = 0
@@ -1474,17 +1450,7 @@ class HTMLReportCreator(ReportCreator):
 
 
 	def printHeader(self, f, controller = '', projectname='', title = ''):
-		src="assets/css"
-		src_files = os.listdir(src)
 		cssfiles = ""
-		for file_name in src_files:
-			full_file_name = os.path.join(src, file_name)
-			if (os.path.isfile(full_file_name)):
-				if (file_name == "mygitstats.css"):
-					cssfiles +="<link rel='stylesheet' href='"+full_file_name+"' type='text/css' />\n\t"
-				else :
-					cssfiles ="<link rel='stylesheet' href='"+full_file_name+"' type='text/css' />\n\t" + cssfiles
-
 		heading = controller
 		if (controller == 'Index'):
 			heading = "Git-Awsum-Stats"
@@ -1497,6 +1463,14 @@ class HTMLReportCreator(ReportCreator):
 	<title>Git-Awsum-Stats - %s</title>
 	<link href='http://fonts.googleapis.com/css?family=Rosario' rel='stylesheet' type='text/css'>
 	<link href='http://fonts.googleapis.com/css?family=Josefin+Sans:100' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/bootstrap.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/bootstrap-responsive.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/demo_page.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/demo_table.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/demo_table_jui.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/jquery.dataTables.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/jquery.jqplot.min.css' rel='stylesheet' type='text/css'>
+	<link href='../assets/css/mygitstats.css' rel='stylesheet' type='text/css'>
 	%s
 	<meta name="generator" content="GitAwesomeStats %s" />
 </head>
@@ -1508,39 +1482,29 @@ class HTMLReportCreator(ReportCreator):
 
 	def printFooter(self, f, title = ''):
 		jsfiles = ""
-		#src="assets/js"
-		#src_files = os.listdir(src)
-		#for file_name in src_files:
-			#full_file_name = os.path.join(src, file_name)
-			#if (os.path.isfile(full_file_name)):
-				#if (file_name == "mygitstats.js"):
-					#jsfiles +="<script type='text/javascript' src='"+full_file_name+"' ></script>\n\t"
-				#else :
-					#jsfiles ="<script type='text/javascript' src='"+full_file_name+"' ></script>\n\t" + jsfiles
-
 		f.write("""
 	</div>
 	<script src="http://code.jquery.com/jquery-latest.min.js" type="text/javascript"></script>
 	<script src="http://code.angularjs.org/1.2.0rc1/angular.min.js"></script>
-	<script type='text/javascript' src='assets/js/table-graph-helper.js'></script>
-	<script type="text/javascript" src="assets/js/bootstrap-carousel.js"></script>
-	<script type="text/javascript" src="assets/js/bootstrap-transition.js"></script>
-	<script type="text/javascript" src="assets/js/bootstrap-modal.js"></script>
-	<script type="text/javascript" src="assets/js/jquery.jqplot.min.js" ></script>
-	<script type="text/javascript" src="assets/js/jqplot.barRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.pieRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.donutRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.categoryAxisRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.canvasTextRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.canvasAxisLabelRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.canvasAxisTickRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.pointLabels.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.highlighter.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.cursor.min.js"></script>
-	<script type="text/javascript" src="assets/js/jqplot.dateAxisRenderer.min.js"></script>
-	<script type="text/javascript" src="assets/js/jquery.dataTables.js"></script>
-	<script type="text/javascript" src="assets/js/flatcolors.js"></script>
-	<script type="text/javascript" src="assets/js/mygitstats.js"></script>
+	<script type='text/javascript' src='../assets/js/table-graph-helper.js'></script>
+	<script type="text/javascript" src="../assets/js/bootstrap-carousel.js"></script>
+	<script type="text/javascript" src="../assets/js/bootstrap-transition.js"></script>
+	<script type="text/javascript" src="../assets/js/bootstrap-modal.js"></script>
+	<script type="text/javascript" src="../assets/js/jquery.jqplot.min.js" ></script>
+	<script type="text/javascript" src="../assets/js/jqplot.barRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.pieRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.donutRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.categoryAxisRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.canvasTextRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.canvasAxisLabelRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.canvasAxisTickRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.pointLabels.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.highlighter.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.cursor.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jqplot.dateAxisRenderer.min.js"></script>
+	<script type="text/javascript" src="../assets/js/jquery.dataTables.js"></script>
+	<script type="text/javascript" src="../assets/js/flatcolors.js"></script>
+	<script type="text/javascript" src="../assets/js/mygitstats.js"></script>
 	%s
 </body>
 </html>
@@ -1575,31 +1539,9 @@ class HTMLReportCreator(ReportCreator):
 		""" % (div_id, json_data))
 		
 class GitStats:
-	def run(self, args_orig):
-		optlist, args = getopt.getopt(args_orig, 'hc:', ["help"])
-		for o,v in optlist:
-			if o == '-c':
-				key, value = v.split('=', 1)
-				if key not in conf:
-					raise KeyError('no such key "%s" in config' % key)
-				if isinstance(conf[key], int):
-					conf[key] = int(value)
-				elif isinstance(conf[key], dict):
-					kk,vv = value.split(',', 1)
-					conf[key][kk] = vv
-				else:
-					conf[key] = value
-			elif o in ('-h', '--help'):
-				usage()
-				sys.exit()
-
-		if len(args) < 2:
-			usage()
-			sys.exit(0)
-
+	def run(self, args):
+		print args
 		outputpath = os.path.abspath(args[-1])
-		rundir = os.getcwd()
-
 		try:
 			os.makedirs(outputpath)
 			os.makedirs(outputpath + '/assets')
@@ -1612,36 +1554,40 @@ class GitStats:
 			print 'FATAL: Output path is not a directory or does not exist'
 			sys.exit(1)
 
-		if not getgnuplotversion():
-			print 'gnuplot not found'
-			sys.exit(1)
-
 		print 'Output path: %s' % outputpath
-		cachefile = os.path.join(outputpath, 'gitstats.cache')
+		copystaticfiles(outputpath)
+		rundir = os.getcwd()
 
-		data = GitDataCollector()
-		data.loadCache(cachefile)
-
-		for gitpath in args[0:-1]:
-			print 'Git path: %s' % gitpath
+		count = 1
+		for gitpath in args[0]:
 			if not os.path.isdir(gitpath):
-				print 'FATAL: Output path is not a directory or does not exist'
-				sys.exit(1)
+				print 'FATAL: git path is not a directory or does not exist'
+				continue
+			print 'Git path: %s' % gitpath
+			repo_name = os.path.basename(os.path.abspath(gitpath))
+			print 'Repo Name: %s' % repo_name
+			cur_out_path = outputpath + '/' + repo_name
+			print 'Output path: %s' % cur_out_path
+			try:
+				os.makedirs(cur_out_path)
+			except OSError:
+				pass
+			cachefile = cur_out_path + '/gitstats.cache'
 
 			os.chdir(gitpath)
 			print 'Collecting data...'
+			data = GitDataCollector()
+			data.loadCache(cachefile)
 			data.collect(gitpath)
 
-		#sys.exit(1)
-		print 'Refining data...'
-		data.saveCache(cachefile)
-		data.refine()
-
-		os.chdir(rundir)
-
-		print 'Generating report...'
-		report = HTMLReportCreator()
-		report.create(data, outputpath)
+			print 'Refining data...'
+			data.saveCache(cachefile)
+			data.refine()
+			os.chdir(rundir)
+			print 'Generating report...'
+			report = HTMLReportCreator()
+			report.create(data, cur_out_path)
+			count += 1
 
 		time_end = time.time()
 		exectime_internal = time_end - time_start
@@ -1670,11 +1616,35 @@ def parse_options():
 
 	group.add_argument("--add-repo", "-a",
 				help = "add a repo to stats directory",
+				nargs = '+',
 				type = str,
 	)
 
 	args = parser.parse_args()
 	return args
+
+def copystaticfiles(path) :
+	# copy static files. 
+	src="assets/css"
+	src_files = os.listdir(src)
+	for file_name in src_files:
+		full_file_name = os.path.join(src, file_name)
+		if (os.path.isfile(full_file_name)):
+			shutil.copy(full_file_name, path + '/assets/css/' + file_name)
+
+	src="assets/js"
+	src_files = os.listdir(src)
+	for file_name in src_files:
+		full_file_name = os.path.join(src, file_name)
+		if (os.path.isfile(full_file_name)):
+			shutil.copy(full_file_name, path + '/assets/js/' + file_name)
+
+	src="assets/images"
+	src_files = os.listdir(src)
+	for file_name in src_files:
+		full_file_name = os.path.join(src, file_name)
+		if (os.path.isfile(full_file_name)):
+			shutil.copy(full_file_name, path + '/assets/images/' + file_name)
 
 if __name__=='__main__':
 	arg_array = []
@@ -1690,7 +1660,7 @@ if __name__=='__main__':
 	if not options.input_dir:
 		arg_array.append(options.add_repo)
 	else:
-		arg_array.append(options.input_dir)
+		arg_array.append([options.input_dir])
 
 	arg_array.append(options.output_dir)
 	g = GitStats()
