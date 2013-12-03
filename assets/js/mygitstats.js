@@ -2,7 +2,15 @@ var highlight_class = "background-sunFlower";
 $(document).ready(function() {
 });
 
+function RepoList($scope) {
+	$scope.done = true;
+	//$scope.repo = websafe_color_array;
+	$scope.repo = $("#repo-list").data('repo');
+	$scope.done = false;
+}
+
 function Index($scope) {
+	$(".main-nav").children(":eq(0)").addClass(highlight_class);
 	//alert("Index");
 	var imgCount = 6;
 	$('#myCarousel').bind('slid',function(){
@@ -13,22 +21,21 @@ function Index($scope) {
 	$("#myCarousel").carousel({
 		interval:3500,
 	});
-	$(".main-nav").children(":eq(0)").addClass(highlight_class);
 }
 
 function Activity($scope) {
+	$(".main-nav").children(":eq(1)").addClass(highlight_class);
 	//alert("Activity");
 	var data = $("#activity").data('json');
-	$(".main-nav").children(":eq(1)").addClass(highlight_class);
 	display(data);
 }
 
 function Authors($scope) {
+	$(".main-nav").children(":eq(2)").addClass(highlight_class);
 	//alert("Author");
 	$scope.detail = " ";
 	$scope.year_month = {};
 	var data = $("#author").data('json');
-	$(".main-nav").children(":eq(2)").addClass(highlight_class);
 	display(data);
 	$scope.showDetails = function ($event){
 		var elem = $event.target;
@@ -103,7 +110,7 @@ function draw_clock_canvas(div_object) {
 	for (var i=0; i<limit; i++){
 		r = div_object.data[i].factor * max_r;
 		ctx.strokeStyle=color_arr[i];
-		var angle = i * a - Math.PI/2 + a;
+		var angle = i * a - Math.PI/2 ;
 		var destx = w/2 + (r * Math.cos(angle));
 		var desty = h/2 + (r * Math.sin(angle));
 		ctx.translate(iTranslate, iTranslate);

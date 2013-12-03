@@ -60,10 +60,10 @@ def getpipeoutput(cmds, quiet = False):
 	if not quiet and ON_LINUX and os.isatty(1):
 		print '>> ' + ' | '.join(cmds),
 		sys.stdout.flush()
-	p0 = subprocess.Popen(cmds[0], stdout = subprocess.PIPE, shell = True)
+	p0 = subprocess.Popen(cmds[0], stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
 	p = p0
 	for x in cmds[1:]:
-		p = subprocess.Popen(x, stdin = p0.stdout, stdout = subprocess.PIPE, shell = True)
+		p = subprocess.Popen(x, stdin = p0.stdout, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
 		p0 = p
 	output = p.communicate()[0]
 	end = time.time()
@@ -850,12 +850,10 @@ class HTMLReportCreator(ReportCreator):
 		#f.write(html_header(2, 'Day of Week'))
 		self.createPlotDiv(f, divid, "div")
 		day_of_week = data.getActivityByDayOfWeek()
-		fp = open(path + '/day_of_week.dat', 'w')
 		for d in range(0, 7):
 			commits = 0
 			if d in day_of_week:
 				commits = day_of_week[d]
-			fp.write('%d %s %d\n' % (d + 1, WEEKDAYS[d], commits))
 			day_of_week_obj['data']['value'][0].append([WEEKDAYS[d], commits])
 			day_of_week_obj['yaxis']['value'].append(commits)
 			day_of_week_obj['xaxis']['value'].append(WEEKDAYS[d])
@@ -866,7 +864,6 @@ class HTMLReportCreator(ReportCreator):
 				day_of_week_obj['y2axis']['value'].append(0.00)
 				labelstr = WEEKDAYS[d] + "(0%)"
 			day_of_week_obj['datalabels'].append(labelstr)
-		fp.close()
 		activities_array['day_of_week'] = day_of_week_obj
 		#f.write("<a href='javascript:void(0);' class='btn btn-primary' id=change-colors>Change Colors</a>")
 
@@ -876,7 +873,6 @@ class HTMLReportCreator(ReportCreator):
 		#f.write(html_header(2, 'Hour of Day'))
 		hour_of_day = data.getActivityByHourOfDay()
 		max_hour = data.activity_by_hour_of_day_busiest
-		fp = open(path + '/hour_of_day.dat', 'w')
 		f.write("""
 			<h2 class="text-center heat-table-heading">Hour of day</h2>
 			<div class='offset2 span8 text-center clock clearfix'>
@@ -890,14 +886,11 @@ class HTMLReportCreator(ReportCreator):
 				hour_of_day_obj['yaxis']['value'].append(hour_of_day[i])
 				value = hour_of_day[i]
 				hour_of_day_obj['xaxis']['value'].append(i+1)
-				fp.write('%d %d\n' % (i + 1, hour_of_day[i]))
 			else:
-				fp.write('%d 0\n' % (i + 1))
 				value = 0
 			#factor = float(float(24 - index)/ 24)
 			factor = float(float(value)/ float(max_hour))
 			hour_of_day_obj['data'].append({'factor':factor, 'value':value, 'hour':i+1})
-		fp.close()
 		activities_array['hour_of_day'] = hour_of_day_obj
 
 		# Hour of Week
@@ -931,7 +924,6 @@ class HTMLReportCreator(ReportCreator):
 		divid = 'month-of-year'
 		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
 		self.createPlotDiv(f, divid, "div")
-		fp = open (path + '/month_of_year.dat', 'w')
 		for mm in range(1, 13):
 			commits = 0
 			if mm in data.activity_by_month_of_year:
@@ -941,8 +933,6 @@ class HTMLReportCreator(ReportCreator):
 			month_of_year_obj['xaxis']['value'].append(MONTHS[mm-1])
 			month_of_year_obj['yaxis']['value'].append(commits)
 			month_of_year_obj['y2axis']['value'].append(((100.0 * commits) / data.getTotalCommits()))
-			fp.write('%d %d\n' % (mm, commits))
-		fp.close()
 		#f.write("</div>")
 		activities_array['month_of_year'] = month_of_year_obj
 
@@ -961,10 +951,6 @@ class HTMLReportCreator(ReportCreator):
 			year_obj['y3axis']['value'].append(data.lines_added_by_year.get(yy,0))
 			year_obj['y4axis']['value'].append(data.lines_removed_by_year.get(yy,0))
 			year_obj['datalabels'].append(labelstr)
-		fg = open(path + '/commits_by_year.dat', 'w')
-		for yy in sorted(data.commits_by_year.keys()):
-			fg.write('%d %d\n' % (yy, data.commits_by_year[yy]))
-		fg.close()
 		activities_array['year'] = year_obj
 
 		# Commits by timezone
@@ -1050,7 +1036,6 @@ class HTMLReportCreator(ReportCreator):
 		self.createPlotDiv(f, divid, "div")
 		domains_by_commits = getkeyssortedbyvaluekey(data.domains, 'commits')
 		domains_by_commits.reverse() # most first
-		fp = open(path + '/domains.dat', 'w')
 		n = 0
 		for domain in domains_by_commits:
 			#if n == conf['max_domains']:
@@ -1062,8 +1047,6 @@ class HTMLReportCreator(ReportCreator):
 			domain_obj['xaxis']['value'].append(domain)
 			domain_obj['yaxis']['value'].append(commits)
 			domain_obj['y2axis']['value'].append((100.0 * commits / data.getTotalCommits()))
-			fp.write('%s %d %d\n' % (domain, n , info['commits']))
-		fp.close()
 		activities_array['domain'] = domain_obj
 		self.printDataDiv(f, 'activity', activities_array)
 		self.printFooter(f)
@@ -1134,8 +1117,8 @@ class HTMLReportCreator(ReportCreator):
 			lineid = "line-plot-"+str(author_index)
 			commithash = {}
 			#linehash = {}
-			author_obj = {'divid':divid, 'title':author, 'type':'line', 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
-			#line_obj = {'divid':lineid, 'title':author, 'type':'line', 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':bool(1)}
+			author_obj = {'divid':divid, 'title':author, 'type':'line', 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':True}
+			#line_obj = {'divid':lineid, 'title':author, 'type':'line', 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':True}
 			count = 0
 			for stamp in sorted(data.authors[author]['stamp']):
 				lines_per_stamp = 0
@@ -1201,7 +1184,7 @@ class HTMLReportCreator(ReportCreator):
 
 		# Commits by Author year/month
 		f.write('\t\t<h2 class="text-center heat-table-heading">Author of the Month</h2>')
-		f.write('<table class="table plot heat-table">')
+		f.write('<table class="table heat-table">')
 		f.write('<thead>')
 		f.write('<tr><th>Year/Month</th>')
 		for month in range(1, 13):
@@ -1252,14 +1235,9 @@ class HTMLReportCreator(ReportCreator):
 		""")
 		f.write('\t\t<h3 class="text-center heat-table-heading" ng-bind="detail"></h3>')
 			
-		fg = open(path + '/commits_by_year_month.dat', 'w')
-		for yymm in sorted(data.commits_by_month.keys()):
-			fg.write('%s %s\n' % (yymm, data.commits_by_month[yymm]))
-		fg.close()
-
 		# Authors :: Author of Year
 		f.write(html_header(2, 'Author of Year'))
-		author_of_year_obj = {'divid':'author-of-year', 'title':'Author of Year', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":10}
+		author_of_year_obj = {'divid':'author-of-year', 'title':'Author of Year', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"asc", "show_count":10}
 		self.createTable(f, author_of_year_obj['divid'], 'table')
 
 		for column in ("Year", "Author", "Commits", "%", "Total commits", "Next top 5", "Number of Authors") :
@@ -1312,19 +1290,16 @@ class HTMLReportCreator(ReportCreator):
 		#f.write(html_header(2, 'Lines of Code'))
 		self.createPlotDiv(f, divid, "div")
 
-		fg = open(path + '/lines_of_code.dat', 'w')
 		sorted_keys = sorted(data.changes_by_date.keys())
 		line_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
 		line_hash = {}
 		for stamp in data.changes_by_date.keys():
 			cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat);
 			line_hash[cur_date] = data.changes_by_date[stamp]['lines']
-			fg.write('%s %d\n' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.changes_by_date[stamp]['lines']))
 		sorted_keys = sorted(line_hash.keys())
 		line_count_obj['line1']['min'] = sorted_keys[0]
 		for cur_date in sorted_keys:
 			line_count_obj['line1']['value'].append([cur_date, line_hash[cur_date]])
-		fg.close()
 		lines_array['lines_count'] = line_count_obj
 		self.printDataDiv(f, 'lines', lines_array)
 		self.printFooter(f)
@@ -1418,13 +1393,6 @@ class HTMLReportCreator(ReportCreator):
 		for cur_date in sorted(file_hash.keys()):
 			file_count_obj['line1']['value'].append([cur_date, file_hash[cur_date]])
 
-		fg = open(path + '/files_by_date.dat', 'w')
-		for line in sorted(list(files_by_date)):
-			fg.write('%s\n' % line)
-		fg.close()
-			
-		#f.write('<h2>Average file size by date</h2>')
-
 		# Files :: Extensions
 		f.write(html_header(2, 'Extensions'))
 		file_extn_obj = {'divid':'file-extn', 'title':'File Extensions', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":10}
@@ -1451,9 +1419,6 @@ class HTMLReportCreator(ReportCreator):
 
 	def printHeader(self, f, controller = '', projectname='', title = ''):
 		cssfiles = ""
-		heading = controller
-		if (controller == 'Index'):
-			heading = "Git-Awsum-Stats"
 		heading = ""
 		f.write(
 """<?xml version="1.0" encoding="UTF-8"?>
@@ -1475,10 +1440,15 @@ class HTMLReportCreator(ReportCreator):
 	<meta name="generator" content="GitAwesomeStats %s" />
 </head>
 <body class=background-unFlower>
+	<div class="background-peterRiver">
+		<div class="container brand-bar">
+			<a href="../index.html"><img class="brand pull-left" src="../assets/images/brand.png" alt="" /></a>
+			<span class=brand-heading>%s</span>
+			%s
+		</div>
+	</div>
 	<div class='container' ng-controller="%s">
-		<h1 class='text-center'>%s</h1>
-""" % (self.title, cssfiles, getversion(), controller, heading))
-		self.printNav(f)
+""" % (self.title, cssfiles, getversion(), self.title, self.getNav(), controller))
 
 	def printFooter(self, f, title = ''):
 		jsfiles = ""
@@ -1510,17 +1480,18 @@ class HTMLReportCreator(ReportCreator):
 </html>
 		""" % (jsfiles))
 
-	def printNav(self, f):
-		f.write("""
-		<ul id="main-nav" class='inline unstyled main-nav text-center'>
-			<li class=well><a href="index.html">General</a></li>
-			<li class=well><a href="activity.html">Activity</a></li>
-			<li class=well><a href="authors.html">Authors</a></li>
-			<li class=well><a href="files.html">Files</a></li>
-			<li class=well><a href="lines.html">Lines</a></li>
-			<li class=well><a href="tags.html">Tags</a></li>
+	def getNav(self):
+		navstr = """
+		<ul id="main-nav" class='inline unstyled pull-right main-nav'>
+			<li class=ell><a href="index.html">General</a></li>
+			<li class=ell><a href="activity.html">Activity</a></li>
+			<li class=ell><a href="authors.html">Authors</a></li>
+			<li class=ell><a href="files.html">Files</a></li>
+			<li class=ell><a href="lines.html">Lines</a></li>
+			<li class=ell><a href="tags.html">Tags</a></li>
 		</ul>
-		""")
+		"""
+		return navstr
 
 	def createPlotDiv(self, f, divid, tag):
 		f.write("""
@@ -1540,7 +1511,6 @@ class HTMLReportCreator(ReportCreator):
 		
 class GitStats:
 	def run(self, args):
-		print args
 		outputpath = os.path.abspath(args[-1])
 		try:
 			os.makedirs(outputpath)
@@ -1558,13 +1528,20 @@ class GitStats:
 		copystaticfiles(outputpath)
 		rundir = os.getcwd()
 
+		repo_file = outputpath +"/.repo.txt"
+		repo = {}
+		if (os.path.isfile(repo_file)):
+			f = open(repo_file , "r")
+			repo = json.loads(f.read())
+			f.close()
+
 		count = 1
-		for gitpath in args[0]:
-			if not os.path.isdir(gitpath):
-				print 'FATAL: git path is not a directory or does not exist'
-				continue
+		for dir_dict in args[0].keys():
+			dir_repo_branch = args[0][dir_dict]
+			gitpath = dir_repo_branch[0]
+			repo_name = dir_repo_branch[1]
+			branch = dir_repo_branch[2]
 			print 'Git path: %s' % gitpath
-			repo_name = os.path.basename(os.path.abspath(gitpath))
 			print 'Repo Name: %s' % repo_name
 			cur_out_path = outputpath + '/' + repo_name
 			print 'Output path: %s' % cur_out_path
@@ -1588,7 +1565,17 @@ class GitStats:
 			report = HTMLReportCreator()
 			report.create(data, cur_out_path)
 			count += 1
+			repo[repo_name] = dir_repo_branch
 
+		f = open(repo_file , "w")
+		f.write("" + json.dumps(repo))
+		f.close()
+
+		f = open(outputpath+"/index.html", "a")
+		f.write("""
+		<div id=repo-list data-repo='%s'></div>
+		""" % json.dumps(repo))
+		f.close()
 		time_end = time.time()
 		exectime_internal = time_end - time_start
 		print 'Execution time %.5f secs, %.5f secs (%.2f %%) in external commands)' % (exectime_internal, exectime_external, (100.0 * exectime_external) / exectime_internal)
@@ -1606,6 +1593,12 @@ def parse_options():
 	group.add_argument("--input-dir", "-i",
 				help = "input directory where to run mygitstats",
 				type = str,
+	)
+
+	parser.add_argument("--copy", "-c",
+				help = "output directory where the stats to be genrated",
+				action="store_true",
+				default = False
 	)
 
 	parser.add_argument("--output-dir", "-o",
@@ -1646,22 +1639,56 @@ def copystaticfiles(path) :
 		if (os.path.isfile(full_file_name)):
 			shutil.copy(full_file_name, path + '/assets/images/' + file_name)
 
+
+	shutil.copy("assets/template.html", path + '/index.html')
+
 if __name__=='__main__':
 	arg_array = []
+	repo_array = []
+	repo_branch_array = {}
 	options = parse_options()
 	if not options.output_dir:
 		print "Output directory is a must!!"
+		sys.exit(1)
+
+	if options.copy:
+		copystaticfiles(options.output_dir)
 		sys.exit(1)
 
 	if not options.input_dir and not options.add_repo:
 		print "Input directory  or Repo name is a must!!"
 		sys.exit(1)
 
+	curdir = os.getcwd()
 	if not options.input_dir:
-		arg_array.append(options.add_repo)
+		repo_array = options.add_repo
+		src = ""
 	else:
-		arg_array.append([options.input_dir])
+		if (os.path.isdir(options.input_dir) == False):
+			print "Input must be a directory !!"
+			sys.exit(1)
+		src = options.input_dir
+		src_files = os.listdir(options.input_dir)
+		for directory in src_files:
+			full_path = os.path.join(src, directory)
+			repo_array.append(full_path)
 
+	for directory in repo_array:
+		print directory
+		if (os.path.isdir(directory) == False):
+			continue
+		os.chdir(directory)
+		cmd = "git rev-parse --abbrev-ref HEAD"
+		output = getpipeoutput([cmd]).split('\n')
+		if (output[0] != ''):
+			repo_name = os.path.basename(os.path.abspath(directory))
+			repo_branch_array[repo_name] = [directory, repo_name, output[0]]
+
+	os.chdir(curdir)
+	if (len(repo_branch_array) == 0):
+		print "Must have atleast one Git directory !!!"
+		sys.exit(1)
+	arg_array.append(repo_branch_array)
 	arg_array.append(options.output_dir)
 	g = GitStats()
 	#g.run(sys.argv[1:])
