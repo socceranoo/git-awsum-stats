@@ -1059,10 +1059,6 @@ class HTMLReportCreator(ReportCreator):
 		f = open(path + '/authors.html', 'w')
 		self.printHeader(f, 'Authors')
 
-
-		f.write(html_header(2, 'Cumulated Added Lines of Code per Author'))
-
-
 		fgl = open(path + '/lines_of_code_by_author.dat', 'w')
 		fgc = open(path + '/commits_by_author.dat', 'w')
 
@@ -1268,9 +1264,7 @@ class HTMLReportCreator(ReportCreator):
 		f = open(path + '/lines.html', 'w')
 		self.printHeader(f, 'Lines')
 
-		f.write('<dl>\n')
-		f.write('<dt>Total lines</dt><dd>%d</dd>' % data.getTotalLOC())
-		f.write('</dl>\n')
+		f.write('<h2 class=text-center>Total lines - %d</h2>' % data.getTotalLOC())
 
 		lines_array = {"total_lines":data.getTotalLOC()}
 
@@ -1350,16 +1344,14 @@ class HTMLReportCreator(ReportCreator):
 		f = open(path + '/files.html', 'w')
 		self.printHeader(f, 'Files')
 
-		f.write('<dl>\n')
-		f.write('<dt>Total files</dt><dd>%d</dd>' % data.getTotalFiles())
-		f.write('<dt>Total lines</dt><dd>%d</dd>' % data.getTotalLOC())
+		f.write('<h2 class=text-center>Total files - %d </h2>' % data.getTotalFiles())
+		f.write('<h2 class=text-center>Total lines - %d </h2>' % data.getTotalLOC())
 		try:
 			average_file_size = 0
 			average_file_size = float(data.getTotalSize()) / data.getTotalFiles()
-			f.write('<dt>Average file size</dt><dd>%.2f bytes</dd>' % (average_file_size))
+			f.write('<h2 class=text-center>Average file size - %.2f bytes</h2>' % (average_file_size))
 		except ZeroDivisionError:
 			pass
-		f.write('</dl>\n')
 
 		# Files :: File count by date
 		dateformat = '%Y-%m-%d'
@@ -1454,8 +1446,8 @@ class HTMLReportCreator(ReportCreator):
 		jsfiles = ""
 		f.write("""
 	</div>
-	<script src="http://code.jquery.com/jquery-latest.min.js" type="text/javascript"></script>
-	<script src="http://code.angularjs.org/1.2.0rc1/angular.min.js"></script>
+	<script type='text/javascript' src='../assets/js/jquery.js'></script>
+	<script type='text/javascript' src='../assets/js/angular.js'></script>
 	<script type='text/javascript' src='../assets/js/table-graph-helper.js'></script>
 	<script type="text/javascript" src="../assets/js/bootstrap-carousel.js"></script>
 	<script type="text/javascript" src="../assets/js/bootstrap-transition.js"></script>
