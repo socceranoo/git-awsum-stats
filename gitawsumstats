@@ -1,0 +1,1310 @@
+#!/usr/bin/env python
+# Copyright (c) 2007-2013 Heikki Hokkanen <hoxu@users.sf.net> & others (see doc/AUTHOR)
+# GPLv2 / GPLv3
+import datetime
+import getopt
+import glob
+import os
+import pickle
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import time
+import zlib
+import json
+import math
+import argparse
+
+if sys.version_info < (2, 6):
+       print >> sys.stderr, "Python 2.6 or higher is required for gitstats"
+       sys.exit(1)
+
+from multiprocessing import Pool
+
+os.environ['LC_ALL'] = 'C'
+
+GNUPLOT_COMMON = 'set terminal png transparent size 640,240\nset size 1.0,1.0\n'
+ON_LINUX = (platform.system() == 'Linux')
+WEEKDAYS = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+MONTHS = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+
+finalArray = {};
+
+exectime_internal = 0.0
+exectime_external = 0.0
+time_start = time.time()
+
+# By default, gnuplot is searched from path, but can be overridden with the
+# environment variable "GNUPLOT"
+gnuplot_cmd = 'gnuplot'
+if 'GNUPLOT' in os.environ:
+	gnuplot_cmd = os.environ['GNUPLOT']
+
+conf = {
+	'max_domains': 10,
+	'max_ext_length': 10,
+	'style': 'gitstats.css',
+	'max_authors': 20,
+	'authors_top': 5,
+	'commit_begin': '',
+	'commit_end': 'HEAD',
+	'linear_linestats': 1,
+	'project_name': '',
+	'merge_authors': {},
+	'processes': 8,
+}
+
+def getpipeoutput(cmds, quiet = True):
+	global exectime_external
+	start = time.time()
+	if not quiet and ON_LINUX and os.isatty(1):
+		print '>> ' + ' | '.join(cmds),
+		sys.stdout.flush()
+	p0 = subprocess.Popen(cmds[0], stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
+	p = p0
+	for x in cmds[1:]:
+		p = subprocess.Popen(x, stdin = p0.stdout, stdout = subprocess.PIPE, stderr = subprocess.PIPE, shell = True)
+		p0 = p
+	output = p.communicate()[0]
+	end = time.time()
+	if not quiet:
+		if ON_LINUX and os.isatty(1):
+			print '\r',
+		print '[%.5f] >> %s' % (end - start, ' | '.join(cmds))
+	exectime_external += (end - start)
+	return output.rstrip('\n')
+
+def getcommitrange(defaultrange = 'HEAD', end_only = False):
+	if len(conf['commit_end']) > 0:
+		if end_only or len(conf['commit_begin']) == 0:
+			return conf['commit_end']
+		return '%s..%s' % (conf['commit_begin'], conf['commit_end'])
+	return defaultrange
+
+def getkeyssortedbyvalues(dict):
+	return map(lambda el : el[1], sorted(map(lambda el : (el[1], el[0]), dict.items())))
+
+# dict['author'] = { 'commits': 512 } - ...key(dict, 'commits')
+def getkeyssortedbyvaluekey(d, key):
+	return map(lambda el : el[1], sorted(map(lambda el : (d[el][key], el), d.keys())))
+
+def getstatsummarycounts(line):
+	numbers = re.findall('\d+', line)
+	if   len(numbers) == 1:
+		# neither insertions nor deletions: may probably only happen for "0 files changed"
+		numbers.append(0);
+		numbers.append(0);
+	elif len(numbers) == 2 and line.find('(+)') != -1:
+		numbers.append(0);    # only insertions were printed on line
+	elif len(numbers) == 2 and line.find('(-)') != -1:
+		numbers.insert(1, 0); # only deletions were printed on line
+	return numbers
+
+VERSION = 0
+def getversion():
+	global VERSION
+	if VERSION == 0:
+		gitstats_repo = os.path.dirname(os.path.abspath(__file__))
+		VERSION = getpipeoutput(["git --git-dir=%s/.git --work-tree=%s rev-parse --short %s" %
+			(gitstats_repo, gitstats_repo, getcommitrange('HEAD').split('\n')[0])])
+	return VERSION
+
+def getgitversion():
+	return getpipeoutput(['git --version']).split('\n')[0]
+
+def getgnuplotversion():
+	return getpipeoutput(['%s --version' % gnuplot_cmd]).split('\n')[0]
+
+def getnumoffilesfromrev(time_rev):
+	"""
+	Get number of files changed in commit
+	"""
+	time, rev = time_rev
+	return (int(time), rev, int(getpipeoutput(['git ls-tree -r --name-only "%s"' % rev, 'wc -l']).split('\n')[0]))
+
+def getnumoflinesinblob(ext_blob):
+	"""
+	Get number of lines in blob
+	"""
+	ext, blob_id = ext_blob
+	return (ext, blob_id, int(getpipeoutput(['git cat-file blob %s' % blob_id, 'wc -l']).split()[0]))
+
+class DataCollector:
+	"""Manages data collection from a revision control repository."""
+	def __init__(self):
+		self.stamp_created = time.time()
+		self.cache = {}
+		self.total_authors = 0
+		self.activity_by_hour_of_day = {} # hour -> commits
+		self.activity_by_day_of_week = {} # day -> commits
+		self.activity_by_month_of_year = {} # month [1-12] -> commits
+		self.activity_by_hour_of_week = {} # weekday -> hour -> commits
+		self.activity_by_hour_of_day_busiest = 0
+		self.activity_by_hour_of_week_busiest = 0
+		self.activity_by_year_week = {} # yy_wNN -> commits
+		self.activity_by_year_week_peak = 0
+
+		self.authors = {} # name -> {commits, first_commit_stamp, last_commit_stamp, last_active_day, active_days, lines_added, lines_removed}
+
+		self.total_commits = 0
+		self.total_files = 0
+		self.authors_by_commits = 0
+
+		# domains
+		self.domains = {} # domain -> commits
+
+		# author of the month
+		self.author_of_month = {} # month -> author -> commits
+		self.author_of_year = {} # year -> author -> commits
+		self.commits_by_month = {} # month -> commits
+		self.commits_by_year = {} # year -> commits
+		self.lines_added_by_month = {} # month -> lines added
+		self.lines_added_by_year = {} # year -> lines added
+		self.lines_removed_by_month = {} # month -> lines removed
+		self.lines_removed_by_year = {} # year -> lines removed
+		self.first_commit_stamp = 0
+		self.last_commit_stamp = 0
+		self.last_active_day = None
+		self.active_days = set()
+
+		# lines
+		self.total_lines = 0
+		self.total_lines_added = 0
+		self.total_lines_removed = 0
+
+		# size
+		self.total_size = 0
+
+		# timezone
+		self.commits_by_timezone = {} # timezone -> commits
+
+		# tags
+		self.tags = {}
+
+		self.files_by_stamp = {} # stamp -> files
+
+		# extensions
+		self.extensions = {} # extension -> files, lines
+
+		# line statistics
+		self.changes_by_date = {} # stamp -> { files, ins, del }
+
+	##
+	# This should be the main function to extract data from the repository.
+	def collect(self, dir):
+		self.dir = dir
+		if len(conf['project_name']) == 0:
+			self.projectname = os.path.basename(os.path.abspath(dir))
+		else:
+			self.projectname = conf['project_name']
+	
+	##
+	# Load cacheable data
+	def loadCache(self, cachefile):
+		if not os.path.exists(cachefile):
+			return
+		#print 'Loading cache...'
+		f = open(cachefile, 'rb')
+		try:
+			self.cache = pickle.loads(zlib.decompress(f.read()))
+		except:
+			# temporary hack to upgrade non-compressed caches
+			f.seek(0)
+			self.cache = pickle.load(f)
+		f.close()
+	
+	##
+	# Produce any additional statistics from the extracted data.
+	def refine(self):
+		pass
+
+	##
+	# : get a dictionary of author
+	def getAuthorInfo(self, author):
+		return None
+	
+	def getActivityByDayOfWeek(self):
+		return {}
+
+	def getActivityByHourOfDay(self):
+		return {}
+
+	# : get a dictionary of domains
+	def getDomainInfo(self, domain):
+		return None
+
+	##
+	# Get a list of authors
+	def getAuthors(self):
+		return []
+	
+	def getFirstCommitDate(self):
+		return datetime.datetime.now()
+	
+	def getLastCommitDate(self):
+		return datetime.datetime.now()
+	
+	def getStampCreated(self):
+		return self.stamp_created
+	
+	def getTags(self):
+		return []
+	
+	def getTotalAuthors(self):
+		return -1
+	
+	def getTotalCommits(self):
+		return -1
+		
+	def getTotalFiles(self):
+		return -1
+	
+	def getTotalLOC(self):
+		return -1
+	
+	##
+	# Save cacheable data
+	def saveCache(self, cachefile):
+		#print 'Saving cache...'
+		tempfile = cachefile + '.tmp'
+		f = open(tempfile, 'wb')
+		#pickle.dump(self.cache, f)
+		data = zlib.compress(pickle.dumps(self.cache))
+		f.write(data)
+		f.close()
+		try:
+			os.remove(cachefile)
+		except OSError:
+			pass
+		os.rename(tempfile, cachefile)
+
+class GitDataCollector(DataCollector):
+	def collect(self, dir):
+		DataCollector.collect(self, dir)
+
+		self.total_authors += int(getpipeoutput(['git shortlog -s %s' % getcommitrange(), 'wc -l']))
+		#self.total_lines = int(getoutput('git-ls-files -z |xargs -0 cat |wc -l'))
+
+		# tags
+		lines = getpipeoutput(['git show-ref --tags']).split('\n')
+		for line in lines:
+			if len(line) == 0:
+				continue
+			(hash, tag) = line.split(' ')
+
+			tag = tag.replace('refs/tags/', '')
+			output = getpipeoutput(['git log "%s" --pretty=format:"%%at %%aN" -n 1' % hash])
+			if len(output) > 0:
+				parts = output.split(' ')
+				stamp = 0
+				try:
+					stamp = int(parts[0])
+				except ValueError:
+					stamp = 0
+				self.tags[tag] = { 'stamp': stamp, 'hash' : hash, 'date' : datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), 'commits': 0, 'authors': {} }
+
+		# collect info on tags, starting from latest
+		tags_sorted_by_date_desc = map(lambda el : el[1], reversed(sorted(map(lambda el : (el[1]['date'], el[0]), self.tags.items()))))
+		prev = None
+		for tag in reversed(tags_sorted_by_date_desc):
+			cmd = 'git shortlog -s "%s"' % tag
+			if prev != None:
+				cmd += ' "^%s"' % prev
+			output = getpipeoutput([cmd])
+			if len(output) == 0:
+				continue
+			prev = tag
+			for line in output.split('\n'):
+				parts = re.split('\s+', line, 2)
+				commits = int(parts[1])
+				author = parts[2]
+				if author in conf['merge_authors']:
+					author = conf['merge_authors'][author]
+				self.tags[tag]['commits'] += commits
+				self.tags[tag]['authors'][author] = commits
+
+		# Collect revision statistics
+		# Outputs "<stamp> <date> <time> <timezone> <author> '<' <mail> '>'"
+		lines = getpipeoutput(['git rev-list --pretty=format:"%%at %%ai %%aN <%%aE>" %s' % getcommitrange('HEAD'), 'grep -v ^commit']).split('\n')
+		for line in lines:
+			parts = line.split(' ', 4)
+			author = ''
+			try:
+				stamp = int(parts[0])
+			except ValueError:
+				stamp = 0
+			timezone = parts[3]
+			author, mail = parts[4].split('<', 1)
+			author = author.rstrip()
+			if author in conf['merge_authors']:
+				author = conf['merge_authors'][author]
+			mail = mail.rstrip('>')
+			domain = '?'
+			if mail.find('@') != -1:
+				domain = mail.rsplit('@', 1)[1]
+			date = datetime.datetime.fromtimestamp(float(stamp))
+
+			# First and last commit stamp (may be in any order because of cherry-picking and patches)
+			if stamp > self.last_commit_stamp:
+				self.last_commit_stamp = stamp
+			if self.first_commit_stamp == 0 or stamp < self.first_commit_stamp:
+				self.first_commit_stamp = stamp
+
+			# activity
+			# hour
+			hour = date.hour
+			self.activity_by_hour_of_day[hour] = self.activity_by_hour_of_day.get(hour, 0) + 1
+			# most active hour?
+			if self.activity_by_hour_of_day[hour] > self.activity_by_hour_of_day_busiest:
+				self.activity_by_hour_of_day_busiest = self.activity_by_hour_of_day[hour]
+
+			# day of week
+			day = date.weekday()
+			self.activity_by_day_of_week[day] = self.activity_by_day_of_week.get(day, 0) + 1
+
+			# domain stats
+			if domain not in self.domains:
+				self.domains[domain] = {}
+			# commits
+			self.domains[domain]['commits'] = self.domains[domain].get('commits', 0) + 1
+
+			# hour of week
+			if day not in self.activity_by_hour_of_week:
+				self.activity_by_hour_of_week[day] = {}
+			self.activity_by_hour_of_week[day][hour] = self.activity_by_hour_of_week[day].get(hour, 0) + 1
+			# most active hour?
+			if self.activity_by_hour_of_week[day][hour] > self.activity_by_hour_of_week_busiest:
+				self.activity_by_hour_of_week_busiest = self.activity_by_hour_of_week[day][hour]
+
+			# month of year
+			month = date.month
+			self.activity_by_month_of_year[month] = self.activity_by_month_of_year.get(month, 0) + 1
+
+			# yearly/weekly activity
+			yyw = date.strftime('%Y-%W')
+			self.activity_by_year_week[yyw] = self.activity_by_year_week.get(yyw, 0) + 1
+			if self.activity_by_year_week_peak < self.activity_by_year_week[yyw]:
+				self.activity_by_year_week_peak = self.activity_by_year_week[yyw]
+
+			# author stats
+			if author not in self.authors:
+				self.authors[author] = {'stamp':[]}
+			# commits, note again that commits may be in any date order because of cherry-picking and patches
+			if 'last_commit_stamp' not in self.authors[author]:
+				self.authors[author]['last_commit_stamp'] = stamp
+			if stamp > self.authors[author]['last_commit_stamp']:
+				self.authors[author]['last_commit_stamp'] = stamp
+			if 'first_commit_stamp' not in self.authors[author]:
+				self.authors[author]['first_commit_stamp'] = stamp
+			if stamp < self.authors[author]['first_commit_stamp']:
+				self.authors[author]['first_commit_stamp'] = stamp
+			self.authors[author]['stamp'].append(stamp)
+
+			# author of the month/year
+			yymm = date.strftime('%Y-%m')
+			if yymm in self.author_of_month:
+				self.author_of_month[yymm][author] = self.author_of_month[yymm].get(author, 0) + 1
+			else:
+				self.author_of_month[yymm] = {}
+				self.author_of_month[yymm][author] = 1
+			self.commits_by_month[yymm] = self.commits_by_month.get(yymm, 0) + 1
+
+			yy = date.year
+			if yy in self.author_of_year:
+				self.author_of_year[yy][author] = self.author_of_year[yy].get(author, 0) + 1
+			else:
+				self.author_of_year[yy] = {}
+				self.author_of_year[yy][author] = 1
+			self.commits_by_year[yy] = self.commits_by_year.get(yy, 0) + 1
+
+			# authors: active days
+			yymmdd = date.strftime('%Y-%m-%d')
+			if 'last_active_day' not in self.authors[author]:
+				self.authors[author]['last_active_day'] = yymmdd
+				self.authors[author]['active_days'] = set([yymmdd])
+			elif yymmdd != self.authors[author]['last_active_day']:
+				self.authors[author]['last_active_day'] = yymmdd
+				self.authors[author]['active_days'].add(yymmdd)
+
+			# project: active days
+			if yymmdd != self.last_active_day:
+				self.last_active_day = yymmdd
+				self.active_days.add(yymmdd)
+
+			# timezone
+			self.commits_by_timezone[timezone] = self.commits_by_timezone.get(timezone, 0) + 1
+
+		# outputs "<stamp> <files>" for each revision
+		revlines = getpipeoutput(['git rev-list --pretty=format:"%%at %%T" %s' % getcommitrange('HEAD'), 'grep -v ^commit']).strip().split('\n')
+		lines = []
+		revs_to_read = []
+		time_rev_count = []
+		#Look up rev in cache and take info from cache if found
+		#If not append rev to list of rev to read from repo
+		for revline in revlines:
+			time, rev = revline.split(' ')
+			#if cache empty then add time and rev to list of new rev's
+			#otherwise try to read needed info from cache
+			if 'files_in_tree' not in self.cache.keys():
+				revs_to_read.append((time,rev))
+				continue
+			if rev in self.cache['files_in_tree'].keys():
+				lines.append('%d %d' % (int(time), self.cache['files_in_tree'][rev]))
+			else:
+				revs_to_read.append((time,rev))
+
+		#Read revisions from repo
+		time_rev_count = Pool(processes=conf['processes']).map(getnumoffilesfromrev, revs_to_read)
+
+		#Update cache with new revisions and append then to general list
+		for (time, rev, count) in time_rev_count:
+			if 'files_in_tree' not in self.cache:
+				self.cache['files_in_tree'] = {}
+			self.cache['files_in_tree'][rev] = count
+			lines.append('%d %d' % (int(time), count))
+
+		self.total_commits += len(lines)
+		for line in lines:
+			parts = line.split(' ')
+			if len(parts) != 2:
+				continue
+			(stamp, files) = parts[0:2]
+			try:
+				self.files_by_stamp[int(stamp)] = int(files)
+			except ValueError:
+				print 'Warning: failed to parse line "%s"' % line
+
+		# extensions and size of files
+		lines = getpipeoutput(['git ls-tree -r -l -z %s' % getcommitrange('HEAD', end_only = True)]).split('\000')
+		blobs_to_read = []
+		for line in lines:
+			if len(line) == 0:
+				continue
+			parts = re.split('\s+', line, 5)
+			if parts[0] == '160000' and parts[3] == '-':
+				# skip submodules
+				continue
+			blob_id = parts[2]
+			size = int(parts[3])
+			fullpath = parts[4]
+
+			self.total_size += size
+			self.total_files += 1
+
+			filename = fullpath.split('/')[-1] # strip directories
+			if filename.find('.') == -1 or filename.rfind('.') == 0:
+				ext = ''
+			else:
+				ext = filename[(filename.rfind('.') + 1):]
+			if len(ext) > conf['max_ext_length']:
+				ext = ''
+			if ext not in self.extensions:
+				self.extensions[ext] = {'files': 0, 'lines': 0}
+			self.extensions[ext]['files'] += 1
+			#if cache empty then add ext and blob id to list of new blob's
+			#otherwise try to read needed info from cache
+			if 'lines_in_blob' not in self.cache.keys():
+				blobs_to_read.append((ext,blob_id))
+				continue
+			if blob_id in self.cache['lines_in_blob'].keys():
+				self.extensions[ext]['lines'] += self.cache['lines_in_blob'][blob_id]
+			else:
+				blobs_to_read.append((ext,blob_id))
+
+		#Get info abount line count for new blob's that wasn't found in cache
+		ext_blob_linecount = Pool(processes=24).map(getnumoflinesinblob, blobs_to_read)
+
+		#Update cache and write down info about number of number of lines
+		for (ext, blob_id, linecount) in ext_blob_linecount:
+			if 'lines_in_blob' not in self.cache:
+				self.cache['lines_in_blob'] = {}
+			self.cache['lines_in_blob'][blob_id] = linecount
+			self.extensions[ext]['lines'] += self.cache['lines_in_blob'][blob_id]
+
+		# line statistics
+		# outputs:
+		#  N files changed, N insertions (+), N deletions(-)
+		# <stamp> <author>
+		self.changes_by_date = {} # stamp -> { files, ins, del }
+		# computation of lines of code by date is better done
+		# on a linear history.
+		extra = ''
+		if conf['linear_linestats']:
+			extra = '--first-parent -m'
+		lines = getpipeoutput(['git log --shortstat %s --pretty=format:"%%at %%aN" %s' % (extra, getcommitrange('HEAD'))]).split('\n')
+		lines.reverse()
+		files = 0; inserted = 0; deleted = 0; total_lines = 0
+		author = None
+		for line in lines:
+			if len(line) == 0:
+				continue
+
+			# <stamp> <author>
+			if re.search('files? changed', line) == None:
+				pos = line.find(' ')
+				if pos != -1:
+					try:
+						(stamp, author) = (int(line[:pos]), line[pos+1:])
+						if author in conf['merge_authors']:
+							author = conf['merge_authors'][author]
+						self.changes_by_date[stamp] = { 'files': files, 'ins': inserted, 'del': deleted, 'lines': total_lines }
+
+						date = datetime.datetime.fromtimestamp(stamp)
+						yymm = date.strftime('%Y-%m')
+						self.lines_added_by_month[yymm] = self.lines_added_by_month.get(yymm, 0) + inserted
+						self.lines_removed_by_month[yymm] = self.lines_removed_by_month.get(yymm, 0) + deleted
+
+						yy = date.year
+						self.lines_added_by_year[yy] = self.lines_added_by_year.get(yy,0) + inserted
+						self.lines_removed_by_year[yy] = self.lines_removed_by_year.get(yy, 0) + deleted
+
+						files, inserted, deleted = 0, 0, 0
+					except ValueError:
+						print 'Warning: unexpected line "%s"' % line
+				else:
+					print 'Warning: unexpected line "%s"' % line
+			else:
+				numbers = getstatsummarycounts(line)
+
+				if len(numbers) == 3:
+					(files, inserted, deleted) = map(lambda el : int(el), numbers)
+					total_lines += inserted
+					total_lines -= deleted
+					self.total_lines_added += inserted
+					self.total_lines_removed += deleted
+
+				else:
+					print 'Warning: failed to handle line "%s"' % line
+					(files, inserted, deleted) = (0, 0, 0)
+				#self.changes_by_date[stamp] = { 'files': files, 'ins': inserted, 'del': deleted }
+		self.total_lines += total_lines
+
+		# Per-author statistics
+
+		# defined for stamp, author only if author commited at this timestamp.
+		self.changes_by_date_by_author = {} # stamp -> author -> lines_added
+
+		# Similar to the above, but never use --first-parent
+		# (we need to walk through every commit to know who
+		# committed what, not just through mainline)
+		lines = getpipeoutput(['git log --shortstat --date-order --pretty=format:"%%at %%aN" %s' % (getcommitrange('HEAD'))]).split('\n')
+		lines.reverse()
+		files = 0; inserted = 0; deleted = 0
+		author = None
+		stamp = 0
+		for line in lines:
+			if len(line) == 0:
+				continue
+
+			# <stamp> <author>
+			if re.search('files? changed', line) == None:
+				pos = line.find(' ')
+				if pos != -1:
+					try:
+						oldstamp = stamp
+						(stamp, author) = (int(line[:pos]), line[pos+1:])
+						if author in conf['merge_authors']:
+							author = conf['merge_authors'][author]
+						if oldstamp > stamp:
+							# clock skew, keep old timestamp to avoid having ugly graph
+							stamp = oldstamp
+						if author not in self.authors:
+							self.authors[author] = { 'stamp':[], 'lines_added' : 0, 'lines_removed' : 0, 'commits' : 0}
+						self.authors[author]['commits'] = self.authors[author].get('commits', 0) + 1
+						self.authors[author]['lines_added'] = self.authors[author].get('lines_added', 0) + inserted
+						self.authors[author]['lines_removed'] = self.authors[author].get('lines_removed', 0) + deleted
+						if stamp not in self.changes_by_date_by_author:
+							self.changes_by_date_by_author[stamp] = {}
+						if author not in self.changes_by_date_by_author[stamp]:
+							self.changes_by_date_by_author[stamp][author] = {}
+						self.changes_by_date_by_author[stamp][author]['lines_added'] = self.authors[author]['lines_added']
+						self.changes_by_date_by_author[stamp][author]['commits'] = self.authors[author]['commits']
+						files, inserted, deleted = 0, 0, 0
+					except ValueError:
+						print 'Warning: unexpected line "%s"' % line
+				else:
+					print 'Warning: unexpected line "%s"' % line
+			else:
+				numbers = getstatsummarycounts(line);
+
+				if len(numbers) == 3:
+					(files, inserted, deleted) = map(lambda el : int(el), numbers)
+				else:
+					print 'Warning: failed to handle line "%s"' % line
+					(files, inserted, deleted) = (0, 0, 0)
+	
+	def refine(self):
+		# authors
+		# name -> {place_by_commits, commits_frac, date_first, date_last, timedelta}
+		self.authors_by_commits = getkeyssortedbyvaluekey(self.authors, 'commits')
+		self.authors_by_commits.reverse() # most first
+		for i, name in enumerate(self.authors_by_commits):
+			self.authors[name]['place_by_commits'] = i + 1
+
+		for name in self.authors.keys():
+			a = self.authors[name]
+			a['commits_frac'] = (100 * float(a['commits'])) / self.getTotalCommits()
+			date_first = datetime.datetime.fromtimestamp(a['first_commit_stamp'])
+			date_last = datetime.datetime.fromtimestamp(a['last_commit_stamp'])
+			delta = date_last - date_first
+			a['date_first'] = date_first.strftime('%Y-%m-%d')
+			a['date_last'] = date_last.strftime('%Y-%m-%d')
+			a['timedelta'] = delta
+			if 'lines_added' not in a: a['lines_added'] = 0
+			if 'lines_removed' not in a: a['lines_removed'] = 0
+	
+	def getActiveDays(self):
+		return self.active_days
+
+	def getActivityByDayOfWeek(self):
+		return self.activity_by_day_of_week
+
+	def getActivityByHourOfDay(self):
+		return self.activity_by_hour_of_day
+
+	def getAuthorInfo(self, author):
+		return self.authors[author]
+	
+	def getAuthors(self, limit = None):
+		res = getkeyssortedbyvaluekey(self.authors, 'commits')
+		res.reverse()
+		return res[:limit]
+	
+	def getCommitDeltaDays(self):
+		return (self.last_commit_stamp / 86400 - self.first_commit_stamp / 86400) + 1
+
+	def getDomainInfo(self, domain):
+		return self.domains[domain]
+
+	def getDomains(self):
+		return self.domains.keys()
+	
+	def getFirstCommitDate(self):
+		return datetime.datetime.fromtimestamp(self.first_commit_stamp)
+	
+	def getLastCommitDate(self):
+		return datetime.datetime.fromtimestamp(self.last_commit_stamp)
+	
+	def getTags(self):
+		lines = getpipeoutput(['git show-ref --tags', 'cut -d/ -f3'])
+		return lines.split('\n')
+	
+	def getTagDate(self, tag):
+		return self.revToDate('tags/' + tag)
+	
+	def getTotalAuthors(self):
+		return self.total_authors
+	
+	def getTotalCommits(self):
+		return self.total_commits
+
+	def getTotalFiles(self):
+		return self.total_files
+	
+	def getTotalLOC(self):
+		return self.total_lines
+
+	def getTotalSize(self):
+		return self.total_size
+	
+	def revToDate(self, rev):
+		stamp = int(getpipeoutput(['git log --pretty=format:%%at "%s" -n 1' % rev]))
+		return datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d')
+
+class ReportCreator:
+	"""Creates the actual report based on given data."""
+	def __init__(self):
+		pass
+	
+	def create(self, data, path):
+		self.data = data
+		self.path = path
+
+def html_linkify(text):
+	return text.lower().replace(' ', '_')
+
+def html_header(level, text):
+	#name = html_linkify(text)
+	return '\t\t<h%d>%s</h%d>\n' % (level, text, level)
+
+class HTMLReportCreator(ReportCreator):
+	def create(self, data, path, branch):
+		finalArray = {}
+		ReportCreator.create(self, data, path)
+		self.title = data.projectname
+		self.indexhtml(data, "/tmp", branch)
+		self.activityhtml(data, "/tmp/")
+		self.authorhtml(data, "/tmp/")
+		self.filehtml(data, "/tmp")
+		self.taghtml(data, "/tmp")
+
+
+	def indexhtml(self, data, path, branch):
+		format = '%b %d %Y %H:%M:%S'
+		format = '%b %d %Y'
+		commits_per_tag = 0.0
+		if (len(data.tags)):
+			commits_per_tag = (1.0 * data.getTotalCommits() / len(data.tags))
+		finalArray['summary'] = {
+				'branch':branch,
+				'date':datetime.datetime.now().strftime(format),
+				'time':int(time.time()) - int(data.getStampCreated()),
+				'data':[
+					{'item':"commits", 'count':data.getTotalCommits(), 'bg':"background-metroNavy", 'columns':6},
+					{'item':"files", 'count':data.getTotalFiles(), 'bg':"background-sunFlower", 'columns':6},
+					{'item':'types', 'count':len(data.extensions.keys()), 'bg':"background-metroOrange", 'columns':4},
+					{'item':"active days", 'count':len(data.getActiveDays()), 'bg':"background-metroPurple", 'columns':4},
+					{'item':"total days", 'count':data.getCommitDeltaDays(), 'bg':"background-metroMagenta", 'columns':4},
+					{'item':"lines", 'count':data.getTotalLOC(), 'bg':"background-midnightBlue", 'columns':4},
+					{'item':"lines added", 'count':data.total_lines_added, 'bg':"background-metroGreen", 'columns':4},
+					{'item':"lines removed", 'count':data.total_lines_removed, 'bg':"background-metroRed", 'columns':4},
+					{'item':"authors", 'count':data.getTotalAuthors(), 'bg':"background-turquoise", 'columns':8},
+					{'item':'commits/author', 'count':int((1.0 * data.getTotalCommits()) / data.getTotalAuthors()), 'bg':"background-metroNavy", 'columns':4},
+					{'item':"tags", 'count':len(data.tags), 'bg':"background-metroTeal", 'columns':6},
+					{'item':'commits/tag', 'count':int(commits_per_tag), 'bg':"background-concrete", 'columns':6},
+					#{'item':'', 'count': data.getFirstCommitDate().strftime(format)+' - '+ data.getLastCommitDate().strftime(format), 'bg':"background-metroPurple", 'columns':6}
+				]
+		}
+
+	def activityhtml(self, data, path):
+		###
+		# Activity
+		totalcommits = data.getTotalCommits()
+		activities_array = {}
+
+		# Weekly activity
+		WEEKS = 32
+		divid = 'weekly-activity'
+		dateformat = '%b-%d %y';
+		weekly_activity = {'divid':divid, 'title':'Weekly Activity (Last '+str(WEEKS)+' weeks)', 'type':'line', 'horizontal':0, 'xaxis':{'label':'week', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':"7 days"}, 'y2axis':{'label':'none', 'value':[]}, 'upperlimit':WEEKS, 'numberformat':'%d', 'dateformat':dateformat}
+		# generate weeks to show (previous N weeks from now)
+		now = datetime.datetime.now()
+		deltaweek = datetime.timedelta(7)
+		weeks = [[], []]
+		stampcur = now
+		for i in range(0, WEEKS):
+			weeks[0].insert(0, stampcur.strftime('%Y-%W'))
+			weeks[1].insert(0, stampcur)
+			stampcur -= deltaweek
+		# top row: commits & bar
+		weekly_activity['line1']['min'] = weeks[1][0].strftime(dateformat)
+		for i in range(0, WEEKS):
+			commits = 0
+			#percentage = 0
+			if weeks[0][i] in data.activity_by_year_week:
+				commits = data.activity_by_year_week[weeks[0][i]]
+				#percentage = float(data.activity_by_year_week[weeks[0][i]]) / data.activity_by_year_week_peak
+			#height = max(1, int(200 * percentage))
+			weekly_activity['yaxis']['value'].append(commits)
+			weekly_activity['xaxis']['value'].append((WEEKS - i))
+			weekly_activity['line1']['value'].append([weeks[1][i].strftime(dateformat), commits])
+
+		activities_array['weekly_activity'] = weekly_activity
+
+
+		# Day of Week
+		divid = 'day-of-week'
+		day_of_week_obj = {'divid':divid, 'title':'Day of Week', 'type':'pie', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'datalabels':[], 'xaxis':{'label':'day', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':7, 'numberformat':'%d'}
+		day_of_week = data.getActivityByDayOfWeek()
+		for d in range(0, 7):
+			commits = 0
+			if d in day_of_week:
+				commits = day_of_week[d]
+			day_of_week_obj['data']['value'][0].append([WEEKDAYS[d], commits])
+			day_of_week_obj['yaxis']['value'].append(commits)
+			day_of_week_obj['xaxis']['value'].append(WEEKDAYS[d])
+			if d in day_of_week:
+				day_of_week_obj['y2axis']['value'].append(((100.0 * day_of_week[d]) / totalcommits))
+				labelstr = WEEKDAYS[d] + "("+"%.1f" % (100.0 * day_of_week[d] / totalcommits) + "%)"
+			else:
+				day_of_week_obj['y2axis']['value'].append(0.00)
+				labelstr = WEEKDAYS[d] + "(0%)"
+			day_of_week_obj['datalabels'].append(labelstr)
+		activities_array['day_of_week'] = day_of_week_obj
+
+		# Hour of Day
+		divid = 'hour-of-day'
+		hour_of_day_obj = {'divid':divid, 'title':'Hour of Day', 'type':'canvas', 'data':[], 'xaxis':{'label':'hour', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'upperlimit':24, 'numberformat':'%d'}
+		hour_of_day = data.getActivityByHourOfDay()
+		max_hour = data.activity_by_hour_of_day_busiest
+		for i in range(0, 24):
+			if i in hour_of_day:
+				#r = 127 + int((float(hour_of_day[i]) / data.activity_by_hour_of_day_busiest) * 128)
+				hour_of_day_obj['yaxis']['value'].append(hour_of_day[i])
+				value = hour_of_day[i]
+				hour_of_day_obj['xaxis']['value'].append(i+1)
+			else:
+				value = 0
+			#factor = float(float(24 - index)/ 24)
+			factor = float(float(value)/ float(max_hour))
+			hour_of_day_obj['data'].append({'factor':factor, 'value':value, 'hour':i+1})
+		activities_array['hour_of_day'] = hour_of_day_obj
+
+		# Hour of Week
+		divid = 'hour-of-week'
+		hour_of_week_obj = [];
+		for weekday in range(0, 7):
+			weekdayArr = {'name':WEEKDAYS[weekday], 'data':[]};
+			for hour in range(0, 24):
+				try:
+					commits = data.activity_by_hour_of_week[weekday][hour]
+				except KeyError:
+					commits = 0
+				if commits != 0:
+					r = 192 - int((float(commits) / data.activity_by_hour_of_week_busiest) * 192)
+					weekdayArr['data'].append(["rgb(0, "+str(r)+", 204)", str(commits), True])
+				else:
+					weekdayArr['data'].append(["#eee", "-", False])
+			hour_of_week_obj.append(weekdayArr)
+		activities_array['hour_of_week'] = hour_of_week_obj
+
+		# Month of Year
+		divid = 'month-of-year'
+		month_of_year_obj = {'divid':divid, 'title':'Month of Year', 'type':'bar', 'horizontal':0, 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'month', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':12, 'numberformat':'%d'}
+		for mm in range(1, 13):
+			commits = 0
+			if mm in data.activity_by_month_of_year:
+				commits = data.activity_by_month_of_year[mm]
+			#index = 0 if(mm > 6) else 0
+			#month_of_year_obj['data']['value'][index-1].append([MONTHS[mm-1], commits])
+			month_of_year_obj['xaxis']['value'].append(MONTHS[mm-1])
+			month_of_year_obj['yaxis']['value'].append(commits)
+			month_of_year_obj['y2axis']['value'].append(((100.0 * commits) / data.getTotalCommits()))
+		activities_array['month_of_year'] = month_of_year_obj
+
+		# Commits by year
+		divid = 'year-commits'
+		year_obj = {'divid':divid, 'title':'Yearly Activity', 'type':'donut', 'horizontal':0, 'datalabels':[], 'data':{'label':'commits', 'value':[[]]}, 'xaxis':{'label':'year', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'y3axis':{'label':'lines-added', 'value':[]}, 'y4axis':{'label':'lines-removed', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
+		for yy in reversed(sorted(data.commits_by_year.keys())):
+			year_obj['xaxis']['value'].append(yy)
+			year_obj['yaxis']['value'].append(data.commits_by_year.get(yy,0))
+			year_obj['data']['value'][0].append([str(yy), data.commits_by_year.get(yy,0)])
+			labelstr = str(yy) + "("+"%.1f" % (100.0 * data.commits_by_year.get(yy,0) / totalcommits) + "%)"
+			labelstr = str(yy) + "("+str(data.commits_by_year.get(yy,0)) + ")"
+			year_obj['y2axis']['value'].append(((100.0 * data.commits_by_year.get(yy,0)) / data.getTotalCommits()))
+			year_obj['y3axis']['value'].append(data.lines_added_by_year.get(yy,0))
+			year_obj['y4axis']['value'].append(data.lines_removed_by_year.get(yy,0))
+			year_obj['datalabels'].append(labelstr)
+		activities_array['year'] = year_obj
+
+		# Commits by timezone
+		divid = 'timezone-commits'
+		timezone_obj = {'divid':divid, 'title':'Commits by Timezone', 'type':'1bar', 'horizontal':0, 'xaxis':{'label':'timezone', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'upperlimit':24, 'numberformat':'%s'}
+		max_commits_on_tz = max(data.commits_by_timezone.values())
+		utc = []
+		for i in range(-10, 14):
+			tz = "00"
+			tz2 = "00"
+			tz3 = "00"
+			if (i < 0):
+				if (i > -10):
+					tz = "-0"+str(i * (-1))+"00"
+					tz2 = "-0"+str(i * (-1))+"30"
+				elif (i == -10):
+					tz = str(i)+"00"
+					tz2 = str(i)+"30"
+					tz3 = "+1330"
+				else:
+					tz = str(i)+"00"
+					tz2 = str(i)+"30"
+				utc.append(str(i))
+			elif (i == 0):
+				tz = "+0000"
+				tz2 = "+0030"
+				utc.append("UTC")
+			else:
+				if (i < 10):
+					tz = "+0"+str(i)+"00"
+					tz2 = "+0"+str(i)+"30"
+				elif (i == 13):
+					tz = "+"+str(i)+"00"
+					utc.insert(0, "-11")
+				else:
+					tz = "+"+str(i)+"00"
+					tz2 = "+"+str(i)+"30"
+				utc.append("+"+str(i))
+		#for i in sorted(data.commits_by_timezone.keys(), key = lambda n : int(n)):
+			commits = data.commits_by_timezone.get(tz, 0)
+			commits2 = data.commits_by_timezone.get(tz2, 0)
+			commits3 = data.commits_by_timezone.get(tz3, 0)
+			commits = commits + commits2 + commits3
+			if (i == 13):
+				timezone_obj['xaxis']['value'].insert(0, "-1100")
+				timezone_obj['yaxis']['value'].insert(0, commits)
+			else:
+				timezone_obj['xaxis']['value'].append(tz)
+				timezone_obj['yaxis']['value'].append(commits)
+			#r = 127 + int((float(commits) / max_commits_on_tz) * 128)
+		timezoneArr = [[], [], []]
+		for i in timezone_obj['yaxis']['value']:
+			r = 160 - int((float(i) / max_commits_on_tz) * 160)
+			if (i != 0) :
+				timezoneArr[0].append("rgb(204, "+str(r)+", 0)")
+			else:
+				timezoneArr[0].append("#eee")
+			timezoneArr[1].append(i)
+		for i in utc:
+			if (i != "+13"):
+				timezoneArr[2].append(i)
+		activities_array['timezone'] = timezoneArr
+
+		# Domains
+		divid = 'domain-commits'
+		domain_obj = {'divid':divid, 'title':'Commits by Domain', 'type':'bar', 'horizontal':0, 'xaxis':{'label':'domain', 'value':[]}, 'yaxis':{'label':'commits', 'value':[]}, 'y2axis':{'label':'percentage', 'value':[]}, 'upperlimit':10, 'numberformat':'%d'}
+		#f.write(html_header(2, 'Commits by Domains'))
+		domains_by_commits = getkeyssortedbyvaluekey(data.domains, 'commits')
+		domains_by_commits.reverse() # most first
+		n = 0
+		for domain in domains_by_commits:
+			#if n == conf['max_domains']:
+			#	break
+			commits = 0
+			n += 1
+			info = data.getDomainInfo(domain)
+			commits = info['commits']
+			domain_obj['xaxis']['value'].append(domain)
+			domain_obj['yaxis']['value'].append(commits)
+			domain_obj['y2axis']['value'].append((100.0 * commits / data.getTotalCommits()))
+		activities_array['domain'] = domain_obj
+		finalArray['activity'] = activities_array
+
+	def authorhtml(self, data, path):
+		###
+		# Authors
+		author_array = {}
+		lines_by_authors = {} # cumulated added lines by
+		# author. to save memory,
+		# changes_by_date_by_author[stamp][author] is defined
+		# only at points where author commits.
+		# lines_by_authors allows us to generate all the
+		# points in the .dat file.
+
+		# Don't rely on getAuthors to give the same order each
+		# time. Be robust and keep the list in a variable.
+		commits_by_authors = {}
+		self.authors_to_plot = data.getAuthors(10)
+		for author in self.authors_to_plot:
+			lines_by_authors[author] = 0
+			commits_by_authors[author] = 0
+		for stamp in sorted(data.changes_by_date_by_author.keys()):
+			for author in self.authors_to_plot:
+				if author in data.changes_by_date_by_author[stamp].keys():
+					lines_by_authors[author] = data.changes_by_date_by_author[stamp][author]['lines_added']
+					commits_by_authors[author] = data.changes_by_date_by_author[stamp][author]['commits']
+		self.authors_to_plot = data.getAuthors(10)
+		#self.authors_to_plot = data.getAuthors(conf['max_authors'])
+		author_index = 0
+		author_commits = {'type':'lineseries', 'author_arr':[]}
+		author_lines = {'type':'lineseries', 'author_arr':[]}
+		age = data.getLastCommitDate() - data.getFirstCommitDate()
+		if (age > datetime.timedelta(5*365)):
+			dateformat = '%Y';
+		elif (age > datetime.timedelta(365)):
+			dateformat = '%Y-%m';
+		elif (age > datetime.timedelta(90)):
+			dateformat = '%Y-%m';
+		else:
+			dateformat = '%Y-%m-%d';
+		max_commits_day = 0
+		for author in self.authors_to_plot:
+			lines_by_authors[author] = 0
+			commits_by_authors[author] = 0
+			divid = "author-plot-"+str(author_index)
+			lineid = "line-plot-"+str(author_index)
+			commithash = {}
+			linehash = {}
+			author_obj = {'divid':divid, 'title':author, 'type':'line', 'line1':{'label':'commits', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':True}
+			line_obj = {'divid':lineid, 'title':author, 'type':'line', 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'1 month'}, 'dateformat':dateformat, 'fill':True}
+			count = 0
+			for stamp in sorted(data.authors[author]['stamp']):
+				lines_per_stamp = 0
+				#if stamp in data.changes_by_date_by_author.keys():
+				#	lines_per_stamp = data.changes_by_date_by_author[stamp][author]['lines_added']
+				#	count += 1	
+				cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat)
+				if cur_date not in commithash:
+					commithash[cur_date] = 1
+					linehash[cur_date] = lines_per_stamp
+				else:
+					commithash[cur_date] += 1
+					linehash[cur_date] += lines_per_stamp
+				
+			sorted_keys = sorted(commithash.keys())
+			sorted_keys2 = sorted(linehash.keys())
+			author_total_commits = 0
+			author_total_lines = 0
+			max_commits_author = sorted(commithash.values())[-1]
+			if (max_commits_day < max_commits_author):
+				max_commits_day = max_commits_author
+			for cur_date in sorted_keys:
+				author_obj['line1']['value'].append([cur_date, commithash[cur_date]])
+				line_obj['line1']['value'].append([cur_date, linehash[cur_date]])
+				author_total_commits += commithash[cur_date];
+				author_total_lines += linehash[cur_date];
+			author_obj['line1']['min']= sorted_keys[0]
+			line_obj['line1']['min']= sorted_keys[0]
+			author_obj['title'] += " ("+str(author_total_commits)+" commits)"
+			line_obj['title'] += " ("+str(author_total_lines)+" lines)"
+			if (len(sorted_keys) > 1):
+				author_commits['author_arr'].append(author_obj)
+				author_lines['author_arr'].append(line_obj)
+			author_index += 1
+		author_array['commits_by_authors']=author_commits
+		#author_array['lines_by_authors']=author_lines
+
+		# Authors :: List of authors
+		author_list_obj = {'divid':'author-list', 'title':'List of Authors', 'type':'table-dom', 'horizontal':0, 'column_headers':[], 'rows':[], 'columns':[], "sort_index":1, "sort_order":"desc", "show_count":25}
+		for column in ("Author", "Commits", "%", "lines-added", "lines-removed", "First commit", "Last commit", "Age", "Active days", "Rank") :
+			author_list_obj['column_headers'].append({ "sTitle": column, 'sClass':'center', "sDefaultContent": "" })
+			author_list_obj['columns'].append(column)
+
+		for author in data.getAuthors():
+			info = data.getAuthorInfo(author)
+			author_list_obj['rows'].append([author, info['commits'], math.ceil(info['commits_frac'] * 100) / 100, info['lines_added'], info['lines_removed'], info['date_first'], info['date_last'], str(info['timedelta']), len(info['active_days']), info['place_by_commits']])
+
+		author_array['author_list']=author_list_obj
+
+		# Commits by Author year/month
+		author_year_month_obj = []
+		yy_range = sorted(data.commits_by_year.keys())
+		max_value = sorted(data.commits_by_month.values())[-1]
+		for yy in range(yy_range[0], yy_range[-1]+1):
+			yearArr = {'name':str(yy), 'data':[]};
+			for mm in range(1, 13):
+				mm_str = "0"+str(mm) if(mm < 10) else str(mm)
+				yymm = str(yy)+"-"+mm_str
+				commits = data.commits_by_month.get(yymm,0)
+				if commits != 0:
+					authordict = data.author_of_month[yymm]
+					authors = getkeyssortedbyvalues(authordict)
+					authors.reverse()
+					authorcommits = data.author_of_month[yymm][authors[0]]
+					nexttop = ""
+					for k in range(1, min(conf['authors_top']+1, len(authors))):
+						author = authors[k].replace("'", "")
+						nexttop += author+" ("+str(data.author_of_month[yymm][authors[k]])+"), "
+					author = authors[0].replace("'", "")
+					month_data = {'Year_Month':str(yy)+"-"+MONTHS[mm-1], 'Top Author':author+" ("+str(authorcommits)+" of "+str(data.commits_by_month[yymm])+" commits)", 'Next 5 Authors':nexttop, 'Total authors':len(authors)}
+					r = 160 - int((float(commits) / max_value) * 160)
+					yearArr['data'].append(["rgb(204, "+str(r)+", 0)", author, True, json.dumps(month_data)])
+				else:
+					yearArr['data'].append(["#fff", "-", False, ""])
+				#data.lines_added_by_month.get(yymm,0)
+				#data.lines_removed_by_month.get(yymm,0)
+			author_year_month_obj.append(yearArr)
+		author_array['author_of_month']=author_year_month_obj
+		
+			
+		# Authors :: Author of Year
+		author_of_year_obj = {'divid':'author-of-year', 'title':'Author of Year', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":0, "sort_order":"desc", "show_count":25}
+		for column in ("year", "author", "No. of commits", "Next top 5 Authors", "#authors") :
+			author_of_year_obj['column_headers'].append({'sTitle':column, 'sClass':'center', 'sDefaultContent':""})
+		for yy in reversed(sorted(data.author_of_year.keys())):
+			authordict = data.author_of_year[yy]
+			authors = getkeyssortedbyvalues(authordict)
+			authors.reverse()
+			commits = data.author_of_year[yy][authors[0]]
+			next = ', '.join(authors[1:conf['authors_top']+1])
+			next = next.replace("'", "")
+			author = authors[0].replace("'", "")
+			author_of_year_obj['rows'].append([yy, author, str(commits)+" of "+str(data.commits_by_year[yy])+"("+str(int(self.calculatePercentage(commits, data.commits_by_year[yy])))+"%)", next, len(authors)])
+		author_array['author_of_year'] = author_of_year_obj
+		finalArray['authors'] = author_array
+
+	def calculatePercentage (self, num, den):
+		try:
+			percentage = math.ceil((100.0 * num / den) * 100) /100
+		except ZeroDivisionError:
+			percentage = 0.00
+		return percentage
+
+	def taghtml(self, data, path):
+		tags_array = {}
+		f = open(path + '/tags.html', 'w')
+		tags_array['total_tags'] = len(data.tags)
+		tags_array['commits_per_tag'] = 0
+		try:
+			tags_array['commits_per_tag'] = (1.0 * data.getTotalCommits() / len(data.tags))
+		except ZeroDivisionError:
+			pass
+
+		tags_obj = {'divid':'tags-table', 'title':'Tags', 'type':'table-dom', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":2, "sort_order":"desc", "show_count":25}
+		for column in ("name", "date", "commits", "authors") :
+			tags_obj['column_headers'].append({'sTitle':column, 'sClass':'center', 'sDefaultContent':""})
+		# sort the tags by date desc
+		tags_sorted_by_date_desc = map(lambda el : el[1], reversed(sorted(map(lambda el : (el[1]['date'], el[0]), data.tags.items()))))
+		for tag in tags_sorted_by_date_desc:
+			authorinfo = []
+			self.authors_by_commits = getkeyssortedbyvalues(data.tags[tag]['authors'])
+			self.authors_by_commits.reverse();
+			for i in self.authors_by_commits[:20]:
+				authorinfo.append('%s (%d)' % (i, data.tags[tag]['authors'][i]))
+			infoStr = ', '.join(authorinfo)
+			infoStr = infoStr.replace("'", "")
+			tags_obj['rows'].append([tag, data.tags[tag]['date'], data.tags[tag]['commits'], infoStr]);
+		tags_array['tags_table'] = tags_obj
+		finalArray['tags'] = tags_array;
+
+	def filehtml(self, data, path):
+		###
+		# Files
+		files_array = {}
+		try:
+			average_file_size = 0
+			average_file_size = float(data.getTotalSize()) / data.getTotalFiles()
+		except ZeroDivisionError:
+			pass
+		# Files :: File count by date
+		dateformat = '%Y-%m-%d'
+		age = data.getLastCommitDate() - data.getFirstCommitDate()
+		if (age > datetime.timedelta(5*365)):
+			dateformat = '%Y';
+		elif (age > datetime.timedelta(365)):
+			dateformat = '%Y-%m';
+		elif (age > datetime.timedelta(90)):
+			dateformat = '%Y-%m';
+		else:
+			dateformat = '%Y-%m-%d';
+
+		divid = 'file-count-by-date'
+		file_count_obj = {'divid':divid, 'title':'File Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'files', 'value':[], 'min':"", 'interval':'3 months'}, 'dateformat':dateformat}
+		# use set to get rid of duplicate/unnecessary entries
+		files_by_date = set()
+		curfiles = 0
+		file_hash = {}
+		for stamp in sorted(data.files_by_stamp.keys()):
+			cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat)
+			if (curfiles != data.files_by_stamp[stamp]):
+				file_hash[cur_date] = data.files_by_stamp[stamp]
+				files_by_date.add('%s %d' % (datetime.datetime.fromtimestamp(stamp).strftime('%Y-%m-%d'), data.files_by_stamp[stamp]))
+			curfiles = data.files_by_stamp[stamp]
+
+		sorted_keys = sorted(file_hash.keys())
+		file_count_obj['line1']['min'] = sorted_keys[0]
+		for cur_date in sorted(file_hash.keys()):
+			file_count_obj['line1']['value'].append([cur_date, file_hash[cur_date]])
+
+		# Files :: Extensions
+		file_extn_obj = {'divid':'file-extn', 'title':'File Extensions', 'type':'table', 'horizontal':0, 'column_headers':[], 'rows':[], "sort_index":1, "sort_order":"desc", "show_count":25}
+		for column in ("Extension", "Files", "% of files", "lines", "% lines", "lines/file") :
+			file_extn_obj['column_headers'].append({'sTitle':column, 'sClass':'center', 'sDefaultContent':""})
+		for ext in sorted(data.extensions.keys()):
+			files = data.extensions[ext]['files']
+			lines = data.extensions[ext]['lines']
+			try:
+				loc_percentage = (100.0 * lines) / data.getTotalLOC()
+			except ZeroDivisionError:
+				loc_percentage = 0
+			file_extn_obj['rows'].append([ext, files, math.ceil((100.0 * files)/data.getTotalFiles() * 100) / 100, lines, math.ceil(loc_percentage * 100) / 100, lines/files])
+		files_array['total_files'] = data.getTotalFiles()
+		files_array['total_lines'] = data.getTotalLOC()
+		files_array['lines_per_file'] = int(files_array['total_lines']/data.getTotalFiles())
+		files_array['total_size'] = data.getTotalSize()
+		files_array['average_size'] = int(average_file_size)
+		files_array['file_count'] = file_count_obj
+		files_array['file_extension'] = file_extn_obj
+
+		###
+		# Lines
+		divid = 'line-count'
+		line_count_obj = {'divid':divid, 'title':'Line Count by Date', 'type':'line', 'horizontal':0, 'line1':{'label':'lines', 'value':[], 'min':"", 'interval':'3 months'}, 'dateformat':dateformat}
+		sorted_keys = sorted(data.changes_by_date.keys())
+		line_count_obj['line1']['min'] = datetime.datetime.fromtimestamp(sorted_keys[0]).strftime('%Y-%m-%d')
+		line_hash = {}
+		for stamp in data.changes_by_date.keys():
+			cur_date = datetime.datetime.fromtimestamp(stamp).strftime(dateformat);
+			line_hash[cur_date] = data.changes_by_date[stamp]['lines']
+		sorted_keys = sorted(line_hash.keys())
+		line_count_obj['line1']['min'] = sorted_keys[0]
+		for cur_date in sorted_keys:
+			line_count_obj['line1']['value'].append([cur_date, line_hash[cur_date]])
+		files_array['line_count'] = line_count_obj
+		finalArray['files'] = files_array
+
+class GitStats:
+	def run(self, repo_array):
+		outputpath = "/gitstats/data"
+		rundir = os.getcwd()
+		count = 1
+		for dir_dict in repo_array.keys():
+			dir_repo_branch = repo_array[dir_dict]
+			gitpath = dir_repo_branch[0]
+			repo_name = dir_repo_branch[1]
+			branch = dir_repo_branch[2]
+			cur_out_path = outputpath
+			cachefile = outputpath + '/.'+repo_name+'.cache'
+			os.chdir(gitpath)
+			data = GitDataCollector()
+			data.loadCache(cachefile)
+			data.collect(gitpath)
+			data.saveCache(cachefile)
+			data.refine()
+			os.chdir(rundir)
+			report = HTMLReportCreator()
+			report.create(data, cur_out_path, branch)
+			count += 1
+			repo_file = outputpath +"/"+repo_name+".data"
+			f = open(repo_file , "w")
+			f.write("" + json.dumps(finalArray))
+			f.close()
+
+def parse_options():
+	parser = argparse.ArgumentParser(description=
+		'Python based implementation for bugspot ' \
+		'for project BugSpies')
+	group = parser.add_mutually_exclusive_group()
+	group.add_argument("--input-dir", "-i",
+				help = "input directory where to run mygitstats",
+				type = str,
+	)
+	group.add_argument("--add-repo", "-a",
+				help = "add a repo to stats directory",
+				nargs = '+',
+				type = str,
+	)
+	args = parser.parse_args()
+	return args
+
+if __name__=='__main__':
+	repo_array = []
+	repo_branch_array = {}
+	options = parse_options()
+	if not options.input_dir and not options.add_repo:
+		print >> sys.stderr, "Input directory  or Repo name is a must!!"
+		sys.exit(1)
+
+	curdir = os.getcwd()
+	if not options.input_dir:
+		repo_array = options.add_repo
+		src = ""
+	else:
+		if (os.path.isdir(options.input_dir) == False):
+			print >> sys.stderr, "Input must be a directory !!"
+			sys.exit(1)
+		src = options.input_dir
+		src_files = os.listdir(options.input_dir)
+		for directory in src_files:
+			full_path = os.path.join(src, directory)
+			repo_array.append(full_path)
+
+	for directory in repo_array:
+		#print directory
+		if (os.path.isdir(directory) == False):
+			continue
+		os.chdir(directory)
+		cmd = "git rev-parse --abbrev-ref HEAD"
+		output = getpipeoutput([cmd]).split('\n')
+		if (output[0] != ''):
+			repo_name = os.path.basename(os.path.abspath(directory))
+			repo_branch_array[repo_name] = [directory, repo_name, output[0]]
+
+	os.chdir(curdir)
+	if (len(repo_branch_array) == 0):
+		print >> sys.stderr, "Must have atleast one Git directory !!!"
+		sys.exit(1)
+	g = GitStats()
+	#g.run(sys.argv[1:])
+	g.run(repo_branch_array)
+
